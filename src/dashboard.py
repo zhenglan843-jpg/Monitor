@@ -211,13 +211,13 @@ class DashboardWindow(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # 图表 1: CPU 与 GPU 利用率走势 (0 ~ 100%)
+        # 图表 1: CPU 与 GPU 占用走势
         self.graph_cpu_gpu = PerformanceGraph(
             title="CPU & GPU 利用率 (60s)",
             unit="%",
             line_color="#38bdf8",
             max_scale=100.0,
-            height=125
+            height=160
         )
         layout.addWidget(self.graph_cpu_gpu)
 
@@ -227,27 +227,17 @@ class DashboardWindow(QWidget):
             unit="W",
             line_color="#10b981",
             max_scale=100.0,
-            height=125
+            height=160
         )
         layout.addWidget(self.graph_power)
 
-        # 图表 3: 游戏渲染帧率与 1% Low 走势 (FPS)
-        self.graph_fps = PerformanceGraph(
-            title="🎮 游戏渲染帧率与流畅度 (FPS / 60s)",
-            unit="FPS",
-            line_color="#22c55e",
-            max_scale=144.0,
-            height=125
-        )
-        layout.addWidget(self.graph_fps)
-
-        # 图表 4: 网络实时下载速率
+        # 图表 3: 网络实时下载速率
         self.graph_net = PerformanceGraph(
             title="网络实时下载流量",
             unit="KB/s",
             line_color="#fbbf24",
             max_scale=1000.0,
-            height=125
+            height=160
         )
         layout.addWidget(self.graph_net)
 
@@ -294,21 +284,7 @@ class DashboardWindow(QWidget):
         self.card_gpu.layout.addWidget(self.lbl_gpu_vram)
         layout.addWidget(self.card_gpu)
 
-        # 3. 游戏渲染与 1% Low 遥测卡片 (RTSS / Afterburner 微秒直读)
-        self.card_fps = ModernCard("🎮 3D 游戏图形与帧率遥测 (FPS & 1% Low)", "RTSS 引擎微秒直读")
-        self.lbl_fps_name = QLabel("🎮 3D 游戏渲染状态: 待机中 (等待游戏启动)")
-        self.lbl_fps_name.setStyleSheet("color: #22c55e; font-weight: 700; font-size: 13px;")
-        self.lbl_fps_stat = QLabel("实时帧率: -- FPS  |  1% Low: -- FPS  |  平均: -- FPS  |  帧时间: -- ms")
-        self.lbl_fps_stat.setStyleSheet("color: #cbd5e1; font-size: 12px;")
-        self.lbl_fps_sub = QLabel("💡 支持 DirectX 9/11/12、Vulkan、OpenGL 游戏微秒级渲染帧间隔采集与防掉帧分析")
-        self.lbl_fps_sub.setStyleSheet("color: #64748b; font-size: 10px;")
-
-        self.card_fps.layout.addWidget(self.lbl_fps_name)
-        self.card_fps.layout.addWidget(self.lbl_fps_stat)
-        self.card_fps.layout.addWidget(self.lbl_fps_sub)
-        layout.addWidget(self.card_fps)
-
-        # 4. 内存与虚拟内存 (Commit Charge) + 网络/磁盘
+        # 3. 内存与虚拟内存 (Commit Charge) + 网络/磁盘
         grid_bot = QHBoxLayout()
         grid_bot.setSpacing(10)
 
@@ -415,8 +391,6 @@ class DashboardWindow(QWidget):
         # 1. 曲线页更新
         self.graph_cpu_gpu.set_data(data.history_cpu, 100.0)
         self.graph_power.set_data(data.history_power, max(50.0, data.gpu_power_limit_w))
-        max_fps_scale = max(144.0, max(data.history_fps) if data.history_fps else 144.0)
-        self.graph_fps.set_data(data.history_fps, max_fps_scale)
         self.graph_net.set_data(data.history_net_down)
 
         # 2. 硬件全景页更新
@@ -447,27 +421,6 @@ class DashboardWindow(QWidget):
             self.lbl_gpu_name.setText("未检测到独立显卡或显卡处于深度睡眠")
             self.lbl_gpu_deep.setText("频率: --")
 
-        # 游戏图形渲染与 1% Low 遥测
-        if data.fps_available and data.fps > 0:
-            self.lbl_fps_name.setText(f"🎮 渲染中: {data.game_process_name or '3D 游戏'} (PID 活跃)")
-            fps_color = "#22c55e" if data.fps >= 60 else ("#f59e0b" if data.fps >= 45 else "#ef4444")
-            low_color = "#38bdf8" if data.fps_1percent_low >= 50 else ("#f59e0b" if data.fps_1percent_low >= 30 else "#ef4444")
-            low_text = f"{data.fps_1percent_low:.1f} FPS" if data.fps_1percent_low > 0 else "-- FPS"
-            self.lbl_fps_stat.setText(
-                f"实时帧率: <span style='color:{fps_color}; font-weight:bold;'>{data.fps:.1f} FPS</span>  |  "
-                f"1% Low: <span style='color:{low_color}; font-weight:bold;'>{low_text}</span>  |  "
-                f"平均: {data.fps_avg:.1f} FPS  |  帧时间: {data.frametime_ms:.1f} ms"
-            )
-            if data.fps_1percent_low >= 50:
-                self.lbl_fps_sub.setText("🟢 RTSS 微秒级环形队列采集正常，画质渲染丝滑无卡顿")
-            elif data.fps_1percent_low > 0:
-                self.lbl_fps_sub.setText("⚡ 检测到轻微掉帧/微卡顿 (1% Low 低于 50 FPS)")
-            else:
-                self.lbl_fps_sub.setText("🟢 正在持续采集中...")
-        else:
-            self.lbl_fps_name.setText("🎮 3D 游戏渲染状态: 待机中 (等待 3D 游戏启动)")
-            self.lbl_fps_stat.setText("实时帧率: -- FPS  |  1% Low: -- FPS  |  平均: -- FPS  |  帧时间: -- ms")
-            self.lbl_fps_sub.setText("💡 支持 DirectX 9/11/12、Vulkan、OpenGL 游戏微秒级渲染帧间隔采集与防掉帧分析")
 
         # 内存 & Commit Charge
         self.lbl_ram_info.setText(f"物理内存: {data.ram_used_gb:.1f} / {data.ram_total_gb:.1f} GB ({data.ram_percent:.0f}%)")

@@ -59,13 +59,6 @@ def run_stress_test():
             {'mount': 'D:', 'total_gb': 954.0, 'used_gb': 890.0, 'percent': 93.3}
         ],
         
-        fps_available=True,
-        fps=144.0,
-        fps_1percent_low=112.5,
-        fps_avg=141.2,
-        frametime_ms=6.94,
-        game_process_name="Cyberpunk2077.exe",
-        history_fps=[135.0 + (i % 10) for i in range(history_len)],
         history_cpu=[95.0 + (i % 5) for i in range(history_len)],
         history_gpu=[90.0 + (i % 10) for i in range(history_len)],
         history_ram=[98.0 for _ in range(history_len)],

@@ -207,12 +207,6 @@ class FloatingBar(QWidget):
         self.h_pwr = MetricItem("PWR", "0W", val_width=50)
         layout_h.addWidget(self.h_pwr)
 
-        self.h_sep_fps = self._create_separator()
-        layout_h.addWidget(self.h_sep_fps)
-
-        self.h_fps = MetricItem("FPS", "--", val_width=72)
-        layout_h.addWidget(self.h_fps)
-
         layout_h.addWidget(self._create_separator())
 
         self.h_net = MetricItem("⬇", "0 B/s", val_width=80)
@@ -251,12 +245,6 @@ class FloatingBar(QWidget):
         hdr.setStyleSheet("color: #22c55e; font-weight: 800; font-size: 10px; letter-spacing: 1px;")
         layout_v.addWidget(hdr)
 
-        self.v_fps = MetricItem("游戏帧率", "--", val_width=60, is_vertical=True)
-        layout_v.addWidget(self.v_fps)
-
-        self.v_fps_low = MetricItem("1% Low", "--", val_width=60, is_vertical=True)
-        layout_v.addWidget(self.v_fps_low)
-
         self.v_gpu = MetricItem("GPU 负载", "0%", val_width=60, is_vertical=True)
         layout_v.addWidget(self.v_gpu)
 
@@ -290,7 +278,7 @@ class FloatingBar(QWidget):
         self.stack.addWidget(self.page_v)
 
         # -------------------------------------------------------------
-        # 页面 2: 极简微型徽章 (MINI) - 清晰呈现 CPU、GPU(含温度)、RAM、FPS、AI、TOK
+        # 页面 2: 极简微型徽章 (MINI) - 清晰呈现 CPU、GPU(含温度)、RAM、AI、TOK
         # -------------------------------------------------------------
         self.page_m = QWidget()
         self.page_m.setStyleSheet("background: transparent;")
@@ -305,12 +293,6 @@ class FloatingBar(QWidget):
 
         self.m_gpu = MetricItem("GPU", "0%", val_width=82)
         layout_m.addWidget(self.m_gpu)
-
-        self.m_sep_fps = self._create_separator()
-        layout_m.addWidget(self.m_sep_fps)
-
-        self.m_fps = MetricItem("FPS", "--", val_width=44)
-        layout_m.addWidget(self.m_fps)
 
         layout_m.addWidget(self._create_separator())
 
@@ -334,13 +316,13 @@ class FloatingBar(QWidget):
         self.hud_mode = mode
         if mode == HUDMode.HORIZONTAL:
             self.stack.setCurrentIndex(0)
-            self.setFixedSize(1175, 36)
+            self.setFixedSize(980, 36)
         elif mode == HUDMode.VERTICAL:
             self.stack.setCurrentIndex(1)
-            self.setFixedSize(185, 362)
+            self.setFixedSize(185, 310)
         else:  # MINI
             self.stack.setCurrentIndex(2)
-            self.setFixedSize(705, 32)
+            self.setFixedSize(590, 32)
 
         # 确保形态切换后窗口始终完整位于屏幕可见区域内
         screen = self.screen()
@@ -428,46 +410,6 @@ class FloatingBar(QWidget):
             self.m_gpu.set_value(m_gpu_str, data.gpu_percent)
         else:
             self.m_gpu.set_value("--", 0)
-
-        # ==================== 4. 刷新游戏帧率与 1% Low 遥测 ====================
-        if data.fps_available and data.fps > 0:
-            fps_val_str = f"{data.fps:.0f}"
-            low_val_str = f"{data.fps_1percent_low:.0f}" if data.fps_1percent_low > 0 else "--"
-
-            fps_color = "#22c55e" if data.fps >= 60 else ("#f59e0b" if data.fps >= 45 else "#ef4444")
-            low_color = "#38bdf8" if data.fps_1percent_low >= 50 else ("#f59e0b" if data.fps_1percent_low >= 30 else "#ef4444")
-
-            fps_tooltip = (
-                f"🎮 游戏帧率与流畅度遥测\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎯 实时帧率: {data.fps:.1f} FPS (平均: {data.fps_avg:.1f} FPS)\n"
-                f"📉 1% Low: {data.fps_1percent_low:.1f} FPS (防卡顿掉帧核心指标)\n"
-                f"⚡ 帧时间: {data.frametime_ms:.1f} ms\n"
-                f"🏷️ 目标进程: {data.game_process_name or '3D 游戏'}\n"
-                f"📡 遥测模式: RTSS / Afterburner 微秒级直读"
-            )
-
-            self.v_fps.set_value(f"{fps_val_str} FPS", 0, fps_color)
-            self.v_fps_low.set_value(f"{low_val_str} FPS", 0, low_color)
-            self.h_fps.set_value(f"{fps_val_str}·{low_val_str}L", 0, fps_color)
-            self.m_fps.set_value(fps_val_str, 0, fps_color)
-        else:
-            fps_tooltip = (
-                f"🎮 游戏帧率与 1% Low 遥测就绪\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"状态: 待机 / 等待 3D 游戏启动\n"
-                f"💡 自动对接 RivaTuner Statistics Server (RTSS) / MSI Afterburner 与 3D 游戏"
-            )
-            self.v_fps.set_value("--", 0, "#64748b")
-            self.v_fps_low.set_value("--", 0, "#64748b")
-            self.h_fps.set_value("--", 0, "#64748b")
-            self.m_fps.set_value("--", 0, "#64748b")
-
-        self.v_fps.setToolTip(fps_tooltip)
-        self.v_fps_low.setToolTip(fps_tooltip)
-        self.h_fps.setToolTip(fps_tooltip)
-        self.m_fps.setToolTip(fps_tooltip)
-
         self.update()
 
     def update_antigravity_metrics(self, data: AntigravityMetrics):

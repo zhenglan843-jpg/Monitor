@@ -20,12 +20,12 @@
 
 > 💡 **想要更深入了解各项指标算法与使用秘籍？请阅读 [📖 Monitor 官方图文使用指南与全景手册](docs/USER_GUIDE.md)**
 
-### 1. 三种游戏级 HUD 悬浮形态 (实时 FPS · 1% Low · 动态波形 · AI 上下文)
+### 1. 三种专业 HUD 悬浮形态 (动态波形 · 硬件遥测 · AI 上下文)
 
-| 模式 | 游戏高刷运行态 (RTSS 微秒直读) | AI Agent 活跃态 (Token 遥测中枢) |
+| 模式 | 极客硬件监控态 | AI Agent 活跃态 (Token 遥测中枢) |
 | :--- | :---: | :---: |
 | **横向流线型胶囊栏 (Horizontal Pill)** | ![横向胶囊栏](assets/screenshots/hud_horizontal.png) | ![横向胶囊栏 AI 态](assets/screenshots/hud_horizontal_ai.png) |
-| **垂直游戏侧边栏 (Vertical Sidebar)** | ![垂直侧边栏](assets/screenshots/hud_vertical.png) | ![垂直侧边栏 AI 态](assets/screenshots/hud_vertical_ai.png) |
+| **垂直侧边栏 (Vertical Sidebar)** | ![垂直侧边栏](assets/screenshots/hud_vertical.png) | ![垂直侧边栏 AI 态](assets/screenshots/hud_vertical_ai.png) |
 | **极简微型徽章 (Mini Badge)** | ![极简微型徽章](assets/screenshots/hud_mini.png) | ![极简微型徽章 AI 态](assets/screenshots/hud_mini_ai.png) |
 
 ### 2. 专业性能中枢仪表盘 (Pro Hub 2.0)
@@ -54,26 +54,22 @@
   * 动态运行主频与核心占用。
 * **RAM 物理内存 & 虚拟内存 (Commit Charge)**：
   * 引入 MSI Afterburner 经典已提交内存监控，提前防范游戏爆虚拟内存崩溃。
-* **3D 游戏渲染帧率与 1% Low 掉帧遥测 (RTSS 微秒级直读通道)**：
-  * **零开销微秒级直读 (< 0.01ms)**：非侵入式对接 RivaTuner Statistics Server (RTSS / MSI Afterburner 核心) 共享内存，无需管理员权限，全面兼容 DirectX 9/11/12、Vulkan、OpenGL 等所有 3D 游戏引擎；
-  * **标准 1% Low / 0.1% Low 掉帧算法**：严格依照 Digital Foundry / CapFrameX 基准标准，直接从 1024 槽环形微秒缓冲区提取计算长尾卡顿点（1000.0 / t_p99），即使平均帧率很高也能精准揪出瞬间微卡顿和掉帧；
-  * **无感待机与自愈**：未运行 3D 游戏或未开启 RTSS 时优雅显示 `--`，零额外 CPU 开销。
-* **游戏网络往返延迟 (Ping) 与实时上下行**：
+* **网络往返延迟 (Ping) 与实时上下行**：
   * 极轻量 Socket 握手延迟探测（绿/黄/红三色毫秒指标），媲美 NVIDIA Overlay 的 Network Latency。
 * **磁盘读写 I/O 速率**：
   * 实时读取/写入吞吐 (MB/s)，快速排查磁盘加载瓶颈。
 
 ---
 
-### 2. 界面显示设计：游戏级 HUD 与专业中枢
+### 2. 界面显示设计：专业 HUD 与中枢仪表盘
 * **3 种 HUD 悬浮形态，一键快捷切换**：
-  1. **垂直侧边 HUD (Vertical Sidebar)**：经典游戏侧边栏风格，紧凑贴靠屏幕边缘，顶部优先呈现游戏帧率与 1% Low；
-  2. **横向流线型胶囊栏 (Horizontal Pill)**：全景旗舰形态，紧凑排布 `124·88L` 实时帧率与 1% Low 标识，内置 CPU 实时微型动态波形折线 (Sparkline)；
-  3. **极简微型徽章 (Mini Badge)**：极简极客模式，紧凑呈现即时高优先级 FPS，桌面占用极小。
+  1. **垂直侧边 HUD (Vertical Sidebar)**：经典侧边栏风格，紧凑贴靠屏幕边缘，纵向整齐罗列核心硬件指标；
+  2. **横向流线型胶囊栏 (Horizontal Pill)**：全景旗舰形态，紧凑排布 CPU、GPU、RAM、网络与 AI 指标，内置 CPU 实时微型动态波形折线 (Sparkline)；
+  3. **极简微型徽章 (Mini Badge)**：极简极客模式，紧凑呈现即时核心指标，桌面占用极小。
 * **🖱️ 鼠标穿透模式 (Click-Through)**：
-  * 专为游戏玩家定制！开启后，鼠标点击完全穿透悬浮条直接操作背景游戏/软件，HUD 常驻屏幕但绝不干扰射击与点击操作！如需重新移动悬浮条，可在屏幕右下角托盘菜单中解除穿透。
+  * 专为免打扰定制！开启后，鼠标点击完全穿透悬浮条直接操作背景游戏/软件，HUD 常驻屏幕但绝不干扰微操与点击操作！如需重新移动悬浮条，可在屏幕右下角托盘菜单中解除穿透。
 * **📈 60 秒实时波形走势图 (Performance Curves)**：
-  * 原生 `QPainter` 平滑绘制 60 秒 CPU/GPU 利用率、显卡功耗、游戏渲染帧率 (FPS) 与网络流量走势，实时标注 Min / Avg / Max 极值。
+  * 原生 `QPainter` 平滑绘制 60 秒 CPU/GPU 利用率、显卡功耗与网络流量走势，实时标注 Min / Avg / Max 极值。
 * **🧹 内存一键优化整理**：
   * 调用 Windows API 释放冗余进程工作集缓存。
 * **零抖动、零毛边抗锯齿**：
@@ -106,7 +102,6 @@
 * **操作系统**：Windows 10 / Windows 11 (64 位)
 * **Python**：Python 3.11 或 3.12
 * **显卡支持**：全功能支持 NVIDIA 独立显卡（非 NVIDIA 显卡自动隐藏显存与功耗，其余功能正常工作）
-* **游戏帧率监控（推荐）**：后台开启 [RivaTuner Statistics Server (RTSS)](https://www.guru3d.com/download/rtss-rivatuner-statistics-server-download/) 或 MSI Afterburner
 
 ### 1. 克隆本仓库
 ```bash
@@ -135,9 +130,9 @@ python -m venv .venv
 
 | 启动方式 | 适用场景 | 说明 |
 | :--- | :--- | :--- |
-| **`启动Monitor.bat`** (推荐) | **日常使用 / 游戏伴侣** | **静默免黑框启动**。在后台拉起系统托盘与悬浮条，不弹出烦人的命令行黑框；若缺少虚拟环境会自动弹出指引。 |
+| **`启动Monitor.bat`** (推荐) | **日常使用 / 系统监控** | **静默免黑框启动**。在后台拉起系统托盘与悬浮条，不弹出烦人的命令行黑框；若缺少虚拟环境会自动弹出指引。 |
 | **`调试启动.bat`** | **驱动排错 / 提交 Issue** | **保留控制台窗口**。实时打印硬件识别、NVML 驱动挂载与日志，报错时方便截图反馈。 |
-| **`运行测试.bat`** | **质量验证** | 一键执行 12 项自动化单元测试。 |
+| **`运行测试.bat`** | **质量验证** | 一键执行自动化单元测试套件。 |
 | **命令行启动** | **开发者模式** | `uv run monitor` 或 `.\.venv\Scripts\python.exe run.py` |
 
 > 💡 **开机自启教程**：按 `Win + R` 输入 `shell:startup`，将 `启动Monitor.bat` 的快捷方式粘贴进去，即可实现开机自动无感启动。更多细节请参阅 [📖 详细使用指南](docs/USER_GUIDE.md)。
@@ -158,7 +153,7 @@ python -m venv .venv
 
 ## 🧪 自动化测试
 
-项目内置完整的单元测试套件（覆盖 RTSS 微秒级 1% Low 掉帧算法、NVML 驱动遥测、Antigravity Token 估算与模型计价等）：
+项目内置完整的单元测试套件（覆盖 NVML 驱动遥测、HUD 多形态渲染、Antigravity Token 估算与模型计价等）：
 
 * **一键运行测试**：双击根目录下的 **`运行测试.bat`**
 * **命令行执行**：
@@ -170,7 +165,7 @@ python -m venv .venv
 
 ## 🛠️ 故障排查与反馈
 
-如果您在使用过程中遇到任何问题（例如显卡数据未识别、帧率未显示等）：
+如果您在使用过程中遇到任何问题（例如显卡数据未识别、依赖缺失等）：
 
 1. 双击运行 **`调试启动.bat`**，查看控制台输出的详细初始化日志；
 2. 欢迎在 GitHub 提交 [Issues](https://github.com/zhenglan843-jpg/Monitor/issues)，并附上控制台报错截图；

@@ -19,7 +19,6 @@ try:
 except ImportError:
     _HAS_NVML = False
 
-from .fps_collector import FpsProvider
 
 
 def format_speed(bytes_per_sec: float) -> str:
@@ -103,21 +102,12 @@ class MetricData:
     battery_percent: int = -1
     battery_plugged: bool = True
 
-    # 游戏/图形帧率与 1% Low 帧监测 (对标 MSI Afterburner / CapFrameX / PresentMon)
-    fps_available: bool = False
-    fps: float = 0.0
-    fps_1percent_low: float = 0.0
-    fps_avg: float = 0.0
-    frametime_ms: float = 0.0
-    game_process_name: str = ""
-
     # 60 秒平滑历史滚动数据 (供 MSI Afterburner 风格走势图与迷你 Sparkline 使用)
     history_cpu: List[float] = field(default_factory=list)
     history_gpu: List[float] = field(default_factory=list)
     history_ram: List[float] = field(default_factory=list)
     history_power: List[float] = field(default_factory=list)
     history_net_down: List[float] = field(default_factory=list)
-    history_fps: List[float] = field(default_factory=list)
 
     # Top 进程 (按需采样，常态为空避免开销)
     top_processes: List[Dict[str, Any]] = field(default_factory=list)
@@ -171,16 +161,12 @@ class SystemCollector(QThread):
         self._gpu_power_limit = 0.0
         self._init_gpu()
 
-        # 游戏帧率与 1% Low 遥测器
-        self._fps_provider = FpsProvider()
-
         # 60 秒历史循环队列 (预填充 60 个 0)
         self._hist_cpu = collections.deque([0.0] * 60, maxlen=60)
         self._hist_gpu = collections.deque([0.0] * 60, maxlen=60)
         self._hist_ram = collections.deque([0.0] * 60, maxlen=60)
         self._hist_power = collections.deque([0.0] * 60, maxlen=60)
         self._hist_net = collections.deque([0.0] * 60, maxlen=60)
-        self._hist_fps = collections.deque([0.0] * 60, maxlen=60)
 
         # 预热 CPU 采样器
         psutil.cpu_percent(interval=None)
@@ -385,34 +371,20 @@ class SystemCollector(QThread):
             except Exception:
                 pass
 
-            # 6. 采集 游戏帧率与 1% Low (RTSS / 3D 渲染深度遥测)
-            try:
-                fps_res = self._fps_provider.sample()
-                data.fps_available = fps_res.available
-                data.fps = fps_res.fps
-                data.fps_1percent_low = fps_res.fps_1percent_low
-                data.fps_avg = fps_res.fps_avg
-                data.frametime_ms = fps_res.frametime_ms
-                data.game_process_name = fps_res.app_name
-            except Exception:
-                data.fps_available = False
-
-            # 7. 更新 60 秒历史循环队列
+            # 6. 更新 60 秒历史循环队列
             self._hist_cpu.append(data.cpu_percent)
             self._hist_gpu.append(data.gpu_percent if data.gpu_available else 0.0)
             self._hist_ram.append(data.ram_percent)
             self._hist_power.append(data.gpu_power_w if data.gpu_available else 0.0)
             self._hist_net.append(data.net_recv_speed / 1024.0)  # KB/s
-            self._hist_fps.append(data.fps if data.fps_available else 0.0)
 
             data.history_cpu = list(self._hist_cpu)
             data.history_gpu = list(self._hist_gpu)
             data.history_ram = list(self._hist_ram)
             data.history_power = list(self._hist_power)
             data.history_net_down = list(self._hist_net)
-            data.history_fps = list(self._hist_fps)
 
-            # 8. 详细模式扩展：分区容量与高占用进程排行
+            # 7. 详细模式扩展：分区容量与高占用进程排行
             if self.detailed_mode:
                 # 磁盘分区
                 try:

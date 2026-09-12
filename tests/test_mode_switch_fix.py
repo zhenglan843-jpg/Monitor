@@ -31,7 +31,7 @@ def verify_mode_switch():
     bar.update_metrics(mock_data)
     app.processEvents()
     print("1. 初始垂直侧边 HUD 尺寸:", bar.size())
-    assert bar.size().width() == 185 and bar.size().height() == 362, f"垂直 HUD 尺寸异常: {bar.size()}"
+    assert bar.size().width() == 185 and bar.size().height() == 310, f"垂直 HUD 尺寸异常: {bar.size()}"
     assert bar.v_cpu.lbl_val.text() == "15%", "垂直 CPU 数值未显示"
     assert bar.v_gpu.lbl_val.text() == "24%", "垂直 GPU 数值未显示"
 
@@ -62,7 +62,7 @@ def verify_mode_switch():
     bar.update_metrics(mock_data)
     app.processEvents()
     print("4. 切回垂直侧边 HUD 尺寸:", bar.size())
-    assert bar.size().width() == 185 and bar.size().height() == 362
+    assert bar.size().width() == 185 and bar.size().height() == 310
     assert bar.v_gpu.lbl_val.text() == "24%"
     assert bar.v_cpu.lbl_val.text() == "15%"
 

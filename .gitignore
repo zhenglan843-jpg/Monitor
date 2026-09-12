@@ -25,6 +25,7 @@ ENV/
 htmlcov/
 .tox/
 .nox/
+tests/screenshots/
 
 # IDE & Editor files
 .vscode/
