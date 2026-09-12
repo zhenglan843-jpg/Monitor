@@ -1,0 +1,4 @@
+# Monitor 核心运行时依赖
+psutil>=7.2.2
+pynvml>=13.0.1
+pyqt6>=6.11.0
