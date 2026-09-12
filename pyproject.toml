@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Monitor - 专业级 Windows 硬件与 AI 性能监控中枢"
 readme = "README.md"
 authors = [
-    { name = "ck554", email = "ck554@users.noreply.github.com" }
+    { name = "ck554", email = "290737847+zhenglan843-jpg@users.noreply.github.com" }
 ]
 license = { text = "MIT" }
 keywords = [
