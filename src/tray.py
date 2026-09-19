@@ -76,10 +76,10 @@ class TrayManager:
             }
         """)
 
-        act_float = menu.addAction("📌 显示/隐藏 悬浮 HUD")
+        act_float = menu.addAction("📌 显示/隐藏 悬浮 HUD (Ctrl+Shift+H)")
         act_float.triggered.connect(self._toggle_floating_bar)
 
-        act_dash = menu.addAction("📊 详细仪表盘 (Pro Hub)")
+        act_dash = menu.addAction("📊 详细仪表盘 (Ctrl+Shift+D)")
         act_dash.triggered.connect(self._show_dashboard)
 
         menu.addSeparator()
@@ -94,10 +94,16 @@ class TrayManager:
         act_m.triggered.connect(lambda: self.floating_bar.set_mode(HUDMode.MINI))
 
         # 鼠标穿透开关 (游戏玩家专属免干扰模式)
-        self.act_click_through = menu.addAction("🖱️ 鼠标穿透模式 (游戏防误触)")
+        self.act_click_through = menu.addAction("🖱️ 鼠标穿透模式 (Ctrl+Shift+P)")
         self.act_click_through.setCheckable(True)
         self.act_click_through.setChecked(self.floating_bar.click_through)
         self.act_click_through.triggered.connect(self._toggle_click_through)
+
+        # 开机自启开关
+        self.act_auto_start = menu.addAction("🚀 开机无感自启")
+        self.act_auto_start.setCheckable(True)
+        self.act_auto_start.triggered.connect(self._toggle_auto_start)
+        self.auto_start_callback = None
 
         menu.addSeparator()
 
@@ -113,6 +119,13 @@ class TrayManager:
         act_quit.triggered.connect(self.app.quit)
 
         self.tray.setContextMenu(menu)
+
+    def _toggle_auto_start(self, checked: bool):
+        if self.auto_start_callback:
+            self.auto_start_callback(checked)
+
+    def set_auto_start_checked(self, checked: bool):
+        self.act_auto_start.setChecked(checked)
 
     def _toggle_click_through(self, checked: bool):
         self.floating_bar.set_click_through(checked)

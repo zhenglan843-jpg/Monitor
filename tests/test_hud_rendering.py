@@ -25,12 +25,12 @@ class TestHudRendering(unittest.TestCase):
 
         # 验证横向胶囊模式及尺寸
         bar.set_mode(HUDMode.HORIZONTAL)
-        self.assertEqual(bar.size().width(), 980)
+        self.assertEqual(bar.size().width(), 1060)
         self.assertEqual(bar.size().height(), 36)
 
         # 验证极简徽章模式及尺寸
         bar.set_mode(HUDMode.MINI)
-        self.assertEqual(bar.size().width(), 590)
+        self.assertEqual(bar.size().width(), 600)
         self.assertEqual(bar.size().height(), 32)
 
     def test_hud_metrics_rendering(self):

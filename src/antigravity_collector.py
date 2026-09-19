@@ -90,7 +90,8 @@ class AntigravityMetrics:
     agent_status: str = "离线"
     status_color: str = "#64748b"
     model_name: str = "Gemini 3.8 Flash (High)"
-    
+    subagents_count: int = 0
+
     # 历史会话概要 (用于仪表盘历史漫游)
     recent_conversations: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -281,6 +282,7 @@ class AntigravityCollector(QThread):
         model_tokens = 0
         thinking_tokens = 0
         tool_tokens = 0
+        subagents_count = 0
         step_count = 0
 
         last_user_step_tokens = 0
@@ -304,6 +306,9 @@ class AntigravityCollector(QThread):
                     t_tok = 0
                     if tools:
                         t_tok = estimate_tokens(json.dumps(tools, ensure_ascii=False))
+                        for tc in tools:
+                            if isinstance(tc, dict) and "invoke_subagent" in str(tc.get("name", "")):
+                                subagents_count += 1
 
                     if stype == "USER_INPUT":
                         user_tokens += c_tok
@@ -329,6 +334,7 @@ class AntigravityCollector(QThread):
                 "conv_id": conv_id,
                 "title": self.get_conversation_title(conv_id),
                 "steps": step_count,
+                "subagents_count": subagents_count,
                 "user_tokens": user_tokens,
                 "model_tokens": model_tokens,
                 "thinking_tokens": thinking_tokens,
@@ -378,10 +384,10 @@ class AntigravityCollector(QThread):
         self._cached_today_conv_sigs[t_path] = sig
         return tok
 
-    def _refresh_totals_and_history(self):
-        """周期性扫描所有会话统计总消耗与构建会话漫游列表 (带毫秒级缓存，每 3 秒刷新一次)"""
+    def _refresh_totals_and_history(self, force_refresh: bool = False):
+        """周期性扫描所有会话统计总消耗与构建会话漫游列表 (带毫秒级缓存，每 15 秒刷新一次以保护磁盘 I/O)"""
         now = time.time()
-        if now - self._last_totals_calc_time < 3.0 and self._cached_total_convs > 0:
+        if not force_refresh and (now - self._last_totals_calc_time < 15.0) and self._cached_total_convs > 0:
             return
 
         self._last_totals_calc_time = now
@@ -454,11 +460,11 @@ class AntigravityCollector(QThread):
         self._cached_total_convs = len(transcripts)
         self._cached_recent_list = recent_list
 
-    def sample_once(self) -> AntigravityMetrics:
+    def sample_once(self, force_refresh_totals: bool = False) -> AntigravityMetrics:
         """执行单次采样并组装 AntigravityMetrics"""
         is_running = self._check_is_running()
         active_id = self.get_active_conversation_id()
-        self._refresh_totals_and_history()
+        self._refresh_totals_and_history(force_refresh=force_refresh_totals)
 
         metrics = AntigravityMetrics(
             is_running=is_running,
@@ -483,6 +489,7 @@ class AntigravityCollector(QThread):
             if res:
                 metrics.active_title = res["title"]
                 metrics.step_count = res["steps"]
+                metrics.subagents_count = res.get("subagents_count", 0)
                 metrics.context_tokens = res["total_context_tokens"]
                 metrics.context_percent = (metrics.context_tokens / metrics.context_limit) * 100.0
                 metrics.user_tokens = res["user_tokens"]

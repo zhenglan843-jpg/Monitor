@@ -113,6 +113,10 @@ class FloatingBar(QWidget):
     quit_signal = pyqtSignal()
     mode_changed_signal = pyqtSignal(HUDMode)
     click_through_signal = pyqtSignal(bool)
+    position_changed_signal = pyqtSignal(int, int)
+    opacity_changed_signal = pyqtSignal(float)
+    pin_changed_signal = pyqtSignal(bool)
+    lock_changed_signal = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -316,13 +320,13 @@ class FloatingBar(QWidget):
         self.hud_mode = mode
         if mode == HUDMode.HORIZONTAL:
             self.stack.setCurrentIndex(0)
-            self.setFixedSize(980, 36)
+            self.setFixedSize(1060, 36)
         elif mode == HUDMode.VERTICAL:
             self.stack.setCurrentIndex(1)
             self.setFixedSize(185, 310)
         else:  # MINI
             self.stack.setCurrentIndex(2)
-            self.setFixedSize(590, 32)
+            self.setFixedSize(600, 32)
 
         # 确保形态切换后窗口始终完整位于屏幕可见区域内
         screen = self.screen()
@@ -534,7 +538,11 @@ class FloatingBar(QWidget):
             event.accept()
 
     def mouseReleaseEvent(self, event):
-        self.is_dragging = False
+        if self.is_dragging:
+            self.is_dragging = False
+            self.position_changed_signal.emit(self.x(), self.y())
+        else:
+            self.is_dragging = False
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not self.click_through:
@@ -570,7 +578,7 @@ class FloatingBar(QWidget):
             }
         """)
 
-        action_dashboard = menu.addAction("📊 详细仪表盘 (Pro Hub)")
+        action_dashboard = menu.addAction("📊 详细仪表盘 (Ctrl+Shift+D)")
         action_dashboard.triggered.connect(self.toggle_dashboard_signal.emit)
 
         menu.addSeparator()
@@ -584,7 +592,7 @@ class FloatingBar(QWidget):
             act.triggered.connect(lambda checked, mode=m: self.set_mode(mode))
 
         # 鼠标穿透开关 (适合游戏无干扰)
-        act_click_thru = menu.addAction("🖱️ 鼠标穿透模式 (游戏防误触)")
+        act_click_thru = menu.addAction("🖱️ 鼠标穿透模式 (Ctrl+Shift+P)")
         act_click_thru.setCheckable(True)
         act_click_thru.setChecked(self.click_through)
         act_click_thru.triggered.connect(lambda checked: self.set_click_through(checked))
@@ -623,10 +631,13 @@ class FloatingBar(QWidget):
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
         self.show()
+        self.pin_changed_signal.emit(checked)
 
     def _toggle_lock(self, checked: bool):
         self.locked_position = checked
+        self.lock_changed_signal.emit(checked)
 
     def _set_opacity(self, val: float):
         self.opacity_val = val
+        self.opacity_changed_signal.emit(val)
         self.update()

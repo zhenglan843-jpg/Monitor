@@ -11,6 +11,8 @@ from .collector import MetricData
 from .antigravity_collector import AntigravityMetrics
 from .chart_view import PerformanceGraph
 from .core_matrix import CoreMatrixWidget
+from .stacked_bar import StackedContextBar
+from .config import ConfigManager
 
 
 def optimize_system_memory() -> int:
@@ -62,6 +64,7 @@ class DashboardWindow(QWidget):
     interval_changed_signal = pyqtSignal(float)
     hud_mode_signal = pyqtSignal(str)
     click_through_signal = pyqtSignal(bool)
+    auto_start_signal = pyqtSignal(bool)
     select_conversation_signal = pyqtSignal(object)
 
     def __init__(self, parent=None):
@@ -344,7 +347,7 @@ class DashboardWindow(QWidget):
         layout.addWidget(card_procs)
 
         # 系统调优卡片
-        card_tweak = ModernCard("🛠️ HUD 与监控设置")
+        card_tweak = ModernCard("🛠️ HUD 与系统设置")
         tweak_layout = QGridLayout()
 
         lbl_hud = QLabel("HUD 悬浮窗形态:")
@@ -360,8 +363,32 @@ class DashboardWindow(QWidget):
         self.btn_toggle_click_thru.clicked.connect(self._on_click_thru_clicked)
         tweak_layout.addWidget(self.btn_toggle_click_thru, 1, 0, 1, 2)
 
+        self.btn_toggle_auto_start = QPushButton("⚙️ 开机自启: 未开启 (点击开启)")
+        self.btn_toggle_auto_start.setCheckable(True)
+        self.btn_toggle_auto_start.clicked.connect(self._on_auto_start_clicked)
+        tweak_layout.addWidget(self.btn_toggle_auto_start, 2, 0, 1, 2)
+
         card_tweak.layout.addLayout(tweak_layout)
         layout.addWidget(card_tweak)
+
+        # 原生全局快捷键卡片
+        card_keys = ModernCard("⌨️ 原生 Win32 全局快捷键", "💡 游戏全屏状态下秒速响应，免切屏微调")
+        grid_keys = QGridLayout()
+        grid_keys.setSpacing(8)
+        keys_info = [
+            ("Ctrl + Shift + P", "一键切换 鼠标穿透 (Click-Through 极客闭环)", "#38bdf8"),
+            ("Ctrl + Shift + H", "一键 显示 / 隐藏 HUD 悬浮条", "#10b981"),
+            ("Ctrl + Shift + D", "一键 展开 / 收起 详细中枢仪表盘", "#c084fc")
+        ]
+        for row_idx, (k_str, k_desc, k_col) in enumerate(keys_info):
+            lbl_k = QLabel(k_str)
+            lbl_k.setStyleSheet(f"color: {k_col}; font-family: 'Cascadia Code', monospace; font-weight: bold; font-size: 11px;")
+            lbl_d = QLabel(k_desc)
+            lbl_d.setStyleSheet("color: #94a3b8; font-size: 11px;")
+            grid_keys.addWidget(lbl_k, row_idx, 0)
+            grid_keys.addWidget(lbl_d, row_idx, 1)
+        card_keys.layout.addLayout(grid_keys)
+        layout.addWidget(card_keys)
 
         layout.addStretch()
         self.tabs.addTab(tab, "⚡ 进程与设置")
@@ -378,6 +405,19 @@ class DashboardWindow(QWidget):
         else:
             self.btn_toggle_click_thru.setText("开启鼠标穿透 (游戏免干扰)")
             self.btn_toggle_click_thru.setStyleSheet("background-color: #2563eb;")
+
+    def _on_auto_start_clicked(self, checked: bool):
+        self.auto_start_signal.emit(checked)
+        self.set_auto_start_ui(checked)
+
+    def set_auto_start_ui(self, enabled: bool):
+        self.btn_toggle_auto_start.setChecked(enabled)
+        if enabled:
+            self.btn_toggle_auto_start.setText("✅ 已开启 Windows 开机无感自启")
+            self.btn_toggle_auto_start.setStyleSheet("background-color: #059669; color: white;")
+        else:
+            self.btn_toggle_auto_start.setText("⚙️ 开机自启: 未开启 (点击开启)")
+            self.btn_toggle_auto_start.setStyleSheet("background-color: #1e293b; color: #94a3b8; border: 1px solid #334155;")
 
     def _on_interval_changed(self, idx: int):
         rates = [0.5, 1.0, 2.0]
@@ -517,10 +557,7 @@ class DashboardWindow(QWidget):
         ctx_head.addWidget(self.agy_ctx_tip)
         card_ctx.layout.addLayout(ctx_head)
 
-        self.bar_agy_ctx = QProgressBar()
-        self.bar_agy_ctx.setRange(0, 100)
-        self.bar_agy_ctx.setValue(0)
-        self.bar_agy_ctx.setFixedHeight(16)
+        self.bar_agy_ctx = StackedContextBar()
         card_ctx.layout.addWidget(self.bar_agy_ctx)
 
         # 细分来源网格
@@ -663,22 +700,27 @@ class DashboardWindow(QWidget):
         self.agy_title_lbl.setText(data.active_title or "未检测到活跃会话")
         short_id = f"{data.active_conversation_id[:12]}..." if len(data.active_conversation_id) > 12 else data.active_conversation_id
         self.agy_id_lbl.setText(f"会话 ID: {short_id or '--'}")
-        self.agy_steps_lbl.setText(f"步骤: {data.step_count} 轮")
+        sub_txt = f" | 子任务: {data.subagents_count}" if data.subagents_count > 0 else ""
+        self.agy_steps_lbl.setText(f"步骤: {data.step_count} 轮{sub_txt}")
         self.agy_model_lbl.setText(f"模型: {data.model_name}")
 
         # 上下文水位
         self.agy_ctx_lbl.setText(f"{data.context_tokens:,} / {data.context_limit:,} Tokens ({data.context_percent:.1f}%)")
-        self.bar_agy_ctx.setValue(int(min(100.0, data.context_percent)))
+        self.bar_agy_ctx.set_data(
+            user_tokens=data.user_tokens,
+            model_tokens=data.model_tokens,
+            thinking_tokens=data.thinking_tokens,
+            tool_tokens=data.tool_tokens,
+            base_system_tokens=data.base_system_tokens,
+            total_limit=data.context_limit
+        )
         if data.context_percent >= 80.0:
-            self.bar_agy_ctx.setStyleSheet("QProgressBar::chunk { background-color: #ef4444; border-radius: 3px; }")
             self.agy_ctx_tip.setText("⚠️ 接近上限 (建议新开会话)")
             self.agy_ctx_tip.setStyleSheet("color: #ef4444; font-size: 11px; font-weight: bold;")
         elif data.context_percent >= 50.0:
-            self.bar_agy_ctx.setStyleSheet("QProgressBar::chunk { background-color: #f59e0b; border-radius: 3px; }")
             self.agy_ctx_tip.setText("⚡ 适中负载 (关注增长)")
             self.agy_ctx_tip.setStyleSheet("color: #f59e0b; font-size: 11px; font-weight: bold;")
         else:
-            self.bar_agy_ctx.setStyleSheet("QProgressBar::chunk { background-color: #38bdf8; border-radius: 3px; }")
             self.agy_ctx_tip.setText("🟢 容量充裕 (安全水位)")
             self.agy_ctx_tip.setStyleSheet("color: #22c55e; font-size: 11px; font-weight: bold;")
 
