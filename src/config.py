@@ -24,6 +24,8 @@ class AppConfig:
     sample_interval: float = 1.0        # 0.5, 1.0, 2.0
     auto_start: bool = False
     currency: str = "CNY"               # CNY / USD
+    hud_scale: float = 1.0              # 0.8, 1.0, 1.2, 1.4
+    auto_game_mode: bool = False        # 全屏应用/游戏自动穿透
     hotkeys_enabled: bool = True
     hotkey_click_through: str = "Ctrl+Shift+P"
     hotkey_toggle_hud: str = "Ctrl+Shift+H"
@@ -58,6 +60,8 @@ class ConfigManager:
                 sample_interval=float(data.get("sample_interval", 1.0)),
                 auto_start=bool(data.get("auto_start", False)),
                 currency=data.get("currency", "CNY"),
+                hud_scale=float(data.get("hud_scale", 1.0)),
+                auto_game_mode=bool(data.get("auto_game_mode", False)),
                 hotkeys_enabled=bool(data.get("hotkeys_enabled", True)),
                 hotkey_click_through=data.get("hotkey_click_through", "Ctrl+Shift+P"),
                 hotkey_toggle_hud=data.get("hotkey_toggle_hud", "Ctrl+Shift+H"),

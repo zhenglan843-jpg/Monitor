@@ -63,6 +63,8 @@ class DashboardWindow(QWidget):
     closed_signal = pyqtSignal()
     interval_changed_signal = pyqtSignal(float)
     hud_mode_signal = pyqtSignal(str)
+    hud_scale_signal = pyqtSignal(float)
+    reset_hud_position_signal = pyqtSignal()
     click_through_signal = pyqtSignal(bool)
     auto_start_signal = pyqtSignal(bool)
     select_conversation_signal = pyqtSignal(object)
@@ -358,15 +360,29 @@ class DashboardWindow(QWidget):
         tweak_layout.addWidget(lbl_hud, 0, 0)
         tweak_layout.addWidget(self.combo_hud, 0, 1)
 
+        lbl_scale = QLabel("HUD 缩放比例:")
+        lbl_scale.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        self.combo_scale = QComboBox()
+        self.combo_scale.addItems(["80% (紧凑)", "100% (默认)", "120% (放大)", "140% (超大)"])
+        self.combo_scale.setCurrentIndex(1)
+        self.combo_scale.currentIndexChanged.connect(self._on_scale_combo_changed)
+        tweak_layout.addWidget(lbl_scale, 1, 0)
+        tweak_layout.addWidget(self.combo_scale, 1, 1)
+
+        self.btn_reset_pos = QPushButton("📍 重置 HUD 位置至主屏右上角")
+        self.btn_reset_pos.setStyleSheet("background-color: #1e293b; color: #38bdf8; border: 1px solid #334155; font-size: 12px;")
+        self.btn_reset_pos.clicked.connect(self.reset_hud_position_signal.emit)
+        tweak_layout.addWidget(self.btn_reset_pos, 2, 0, 1, 2)
+
         self.btn_toggle_click_thru = QPushButton("开启鼠标穿透 (游戏免干扰)")
         self.btn_toggle_click_thru.setCheckable(True)
         self.btn_toggle_click_thru.clicked.connect(self._on_click_thru_clicked)
-        tweak_layout.addWidget(self.btn_toggle_click_thru, 1, 0, 1, 2)
+        tweak_layout.addWidget(self.btn_toggle_click_thru, 3, 0, 1, 2)
 
         self.btn_toggle_auto_start = QPushButton("⚙️ 开机自启: 未开启 (点击开启)")
         self.btn_toggle_auto_start.setCheckable(True)
         self.btn_toggle_auto_start.clicked.connect(self._on_auto_start_clicked)
-        tweak_layout.addWidget(self.btn_toggle_auto_start, 2, 0, 1, 2)
+        tweak_layout.addWidget(self.btn_toggle_auto_start, 4, 0, 1, 2)
 
         card_tweak.layout.addLayout(tweak_layout)
         layout.addWidget(card_tweak)
@@ -396,6 +412,24 @@ class DashboardWindow(QWidget):
     def _on_hud_combo_changed(self, idx: int):
         modes = ["VERTICAL", "HORIZONTAL", "MINI"]
         self.hud_mode_signal.emit(modes[idx])
+
+    def _on_scale_combo_changed(self, idx: int):
+        scales = [0.8, 1.0, 1.2, 1.4]
+        if 0 <= idx < len(scales):
+            self.hud_scale_signal.emit(scales[idx])
+
+    def set_scale_ui(self, factor: float):
+        scales = [0.8, 1.0, 1.2, 1.4]
+        best_idx = 1
+        min_diff = 999.0
+        for i, s in enumerate(scales):
+            diff = abs(factor - s)
+            if diff < min_diff:
+                min_diff = diff
+                best_idx = i
+        self.combo_scale.blockSignals(True)
+        self.combo_scale.setCurrentIndex(best_idx)
+        self.combo_scale.blockSignals(False)
 
     def _on_click_thru_clicked(self, checked: bool):
         self.click_through_signal.emit(checked)
@@ -502,10 +536,15 @@ class DashboardWindow(QWidget):
 
     # 4. Antigravity AI 上下文与 Token 监视面板
     def _init_antigravity_tab(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
         tab = QWidget()
+        tab.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
         # 1. 活跃会话与运行状态卡片
         card_session = ModernCard("🤖 Antigravity AI 活跃会话 (Active Session)")
@@ -544,7 +583,89 @@ class DashboardWindow(QWidget):
         card_session.layout.addLayout(row2)
         layout.addWidget(card_session)
 
-        # 2. 上下文容量与健康水位卡片
+        # 2. 🌟 官方云端实时配额卡片 (Official Live Quota Limits)
+        card_quota = ModernCard("🌟 官方云端实时配额 (Official Quota Limits)")
+        
+        q_header = QHBoxLayout()
+        self.agy_tier_badge = QLabel("💎 Google AI Pro")
+        self.agy_tier_badge.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d97706, stop:1 #b45309); "
+            "color: #ffffff; font-size: 11px; font-weight: bold; border-radius: 9px; padding: 2px 8px;"
+        )
+        self.agy_tp_status = QLabel("第三方模型: 待检测")
+        self.agy_tp_status.setStyleSheet("color: #94a3b8; font-size: 11px;")
+
+        q_header.addWidget(self.agy_tier_badge)
+        q_header.addStretch()
+        q_header.addWidget(self.agy_tp_status)
+        card_quota.layout.addLayout(q_header)
+
+        grid_quota = QGridLayout()
+        grid_quota.setSpacing(6)
+
+        # 5小时限额
+        lbl_5h = QLabel("5小时滑动限额 (5-Hour Window):")
+        lbl_5h.setStyleSheet("color: #cbd5e1; font-size: 11px; font-weight: 600;")
+        self.agy_5h_val_lbl = QLabel("--% (待检测)")
+        self.agy_5h_val_lbl.setStyleSheet("color: #38bdf8; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+        grid_quota.addWidget(lbl_5h, 0, 0)
+        grid_quota.addWidget(self.agy_5h_val_lbl, 0, 1, Qt.AlignmentFlag.AlignRight)
+
+        self.bar_quota_5h = QProgressBar()
+        self.bar_quota_5h.setRange(0, 100)
+        self.bar_quota_5h.setValue(0)
+        self.bar_quota_5h.setTextVisible(False)
+        self.bar_quota_5h.setFixedHeight(7)
+        self.bar_quota_5h.setStyleSheet("""
+            QProgressBar {
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background-color: #10b981;
+                border-radius: 2px;
+            }
+        """)
+        grid_quota.addWidget(self.bar_quota_5h, 1, 0, 1, 2)
+
+        # 周度限额
+        lbl_wk = QLabel("周度总体限额 (Weekly Limit):")
+        lbl_wk.setStyleSheet("color: #cbd5e1; font-size: 11px; font-weight: 600;")
+        self.agy_wk_val_lbl = QLabel("--% (待检测)")
+        self.agy_wk_val_lbl.setStyleSheet("color: #38bdf8; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+        grid_quota.addWidget(lbl_wk, 2, 0)
+        grid_quota.addWidget(self.agy_wk_val_lbl, 2, 1, Qt.AlignmentFlag.AlignRight)
+
+        self.bar_quota_wk = QProgressBar()
+        self.bar_quota_wk.setRange(0, 100)
+        self.bar_quota_wk.setValue(0)
+        self.bar_quota_wk.setTextVisible(False)
+        self.bar_quota_wk.setFixedHeight(7)
+        self.bar_quota_wk.setStyleSheet("""
+            QProgressBar {
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background-color: #38bdf8;
+                border-radius: 2px;
+            }
+        """)
+        grid_quota.addWidget(self.bar_quota_wk, 3, 0, 1, 2)
+
+        self.lbl_quota_warning = QLabel("⚠️ 云端配额极低 (<15%)，请注意控制请求频率或新开会话")
+        self.lbl_quota_warning.setStyleSheet(
+            "color: #ef4444; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; "
+            "border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;"
+        )
+        self.lbl_quota_warning.setVisible(False)
+        card_quota.layout.addLayout(grid_quota)
+        card_quota.layout.addWidget(self.lbl_quota_warning)
+        layout.addWidget(card_quota)
+
+        # 3. 上下文容量与健康水位卡片
         card_ctx = ModernCard("📊 对话上下文水位 (Context Window Usage)")
         
         ctx_head = QHBoxLayout()
@@ -594,41 +715,71 @@ class DashboardWindow(QWidget):
         card_ctx.layout.addLayout(grid_tok)
         layout.addWidget(card_ctx)
 
-        # 3. 消耗统计与费用估算卡片
-        card_stat = ModernCard("⚡ 消耗统计与费率 (Consumption & Cost)")
-        grid_stat = QGridLayout()
-        grid_stat.setSpacing(8)
+        # 3. 单轮消耗统计卡片
+        card_stat = ModernCard("⚡ 单轮消耗统计 (Last Turn Consumption)")
+        stat_h = QHBoxLayout()
+        stat_h.setSpacing(12)
 
         lbl_t1 = QLabel("单轮增量 (Last Turn):")
         lbl_t1.setStyleSheet("color: #94a3b8; font-size: 11px;")
         self.agy_turn_lbl = QLabel("+0 (In: 0 | Out: 0)")
         self.agy_turn_lbl.setStyleSheet("color: #e2e8f0; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
-        grid_stat.addWidget(lbl_t1, 0, 0)
-        grid_stat.addWidget(self.agy_turn_lbl, 0, 1)
+        stat_h.addWidget(lbl_t1)
+        stat_h.addWidget(self.agy_turn_lbl)
+        stat_h.addStretch()
 
-        lbl_t2 = QLabel("今日累计 (Today):")
-        lbl_t2.setStyleSheet("color: #94a3b8; font-size: 11px;")
-        self.agy_today_lbl = QLabel("0 Tokens")
-        self.agy_today_lbl.setStyleSheet("color: #38bdf8; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
-        grid_stat.addWidget(lbl_t2, 0, 2)
-        grid_stat.addWidget(self.agy_today_lbl, 0, 3)
-
-        lbl_t3 = QLabel("历史总消耗 (All-time):")
-        lbl_t3.setStyleSheet("color: #94a3b8; font-size: 11px;")
-        self.agy_total_lbl = QLabel("0 Tokens")
-        self.agy_total_lbl.setStyleSheet("color: #e2e8f0; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
-        grid_stat.addWidget(lbl_t3, 1, 0)
-        grid_stat.addWidget(self.agy_total_lbl, 1, 1)
-
-        lbl_t4 = QLabel("估算费用 (Est. Cost):")
-        lbl_t4.setStyleSheet("color: #94a3b8; font-size: 11px;")
-        self.agy_cost_lbl = QLabel("约 $0.00 / ¥0.00")
-        self.agy_cost_lbl.setStyleSheet("color: #10b981; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
-        grid_stat.addWidget(lbl_t4, 1, 2)
-        grid_stat.addWidget(self.agy_cost_lbl, 1, 3)
-
-        card_stat.layout.addLayout(grid_stat)
+        card_stat.layout.addLayout(stat_h)
         layout.addWidget(card_stat)
+
+        # 3.5 Token 累计消耗与成本估算卡片
+        card_tok_overview = ModernCard("📈 Token 消耗与成本概览 (Tokens & Cost Overview)", "全量历史会话增量估算")
+        grid_overview = QGridLayout()
+        grid_overview.setSpacing(6)
+
+        lbl_t_day = QLabel("今日消耗:")
+        lbl_t_day.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_today_tok = QLabel("0 Tokens")
+        self.lbl_today_tok.setStyleSheet("color: #38bdf8; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+        lbl_c_day = QLabel("今日费用:")
+        lbl_c_day.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_today_cost = QLabel("$0.00 (¥0.00)")
+        self.lbl_today_cost.setStyleSheet("color: #10b981; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+
+        grid_overview.addWidget(lbl_t_day, 0, 0)
+        grid_overview.addWidget(self.lbl_today_tok, 0, 1)
+        grid_overview.addWidget(lbl_c_day, 0, 2)
+        grid_overview.addWidget(self.lbl_today_cost, 0, 3)
+
+        lbl_t_all = QLabel("累计总计:")
+        lbl_t_all.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_total_tok = QLabel("0 Tokens")
+        self.lbl_total_tok.setStyleSheet("color: #c084fc; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
+        lbl_c_all = QLabel("预估总额:")
+        lbl_c_all.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_total_cost = QLabel("$0.00 (¥0.00)")
+        self.lbl_total_cost.setStyleSheet("color: #34d399; font-family: 'Cascadia Code'; font-size: 12px; font-weight: bold;")
+
+        grid_overview.addWidget(lbl_t_all, 1, 0)
+        grid_overview.addWidget(self.lbl_total_tok, 1, 1)
+        grid_overview.addWidget(lbl_c_all, 1, 2)
+        grid_overview.addWidget(self.lbl_total_cost, 1, 3)
+
+        lbl_s_info = QLabel("历史会话:")
+        lbl_s_info.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_total_convs = QLabel("0 个会话")
+        self.lbl_total_convs.setStyleSheet("color: #cbd5e1; font-family: 'Cascadia Code'; font-size: 11px;")
+        lbl_m_info = QLabel("主要模型:")
+        lbl_m_info.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self.lbl_top_models = QLabel("检测中...")
+        self.lbl_top_models.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+
+        grid_overview.addWidget(lbl_s_info, 2, 0)
+        grid_overview.addWidget(self.lbl_total_convs, 2, 1)
+        grid_overview.addWidget(lbl_m_info, 2, 2)
+        grid_overview.addWidget(self.lbl_top_models, 2, 3)
+
+        card_tok_overview.layout.addLayout(grid_overview)
+        layout.addWidget(card_tok_overview)
 
         # 4. 历史会话漫游表格
         card_recent = ModernCard("📚 最近会话历史 (Recent Conversations)", "💡 点击任意行直接查阅该会话用量")
@@ -656,7 +807,8 @@ class DashboardWindow(QWidget):
 
         layout.addWidget(card_recent)
 
-        self.tabs.addTab(tab, "🤖 Antigravity AI")
+        scroll.setWidget(tab)
+        self.tabs.addTab(scroll, "🤖 Antigravity AI")
 
     def _on_table_agy_clicked(self, row: int, col: int):
         if row < len(self._current_recent_conversations):
@@ -704,6 +856,66 @@ class DashboardWindow(QWidget):
         self.agy_steps_lbl.setText(f"步骤: {data.step_count} 轮{sub_txt}")
         self.agy_model_lbl.setText(f"模型: {data.model_name}")
 
+        # 官方云端实时配额更新
+        if data.user_tier_name:
+            self.agy_tier_badge.setText(f"💎 {data.user_tier_name}")
+            self.agy_tier_badge.setVisible(True)
+        else:
+            self.agy_tier_badge.setText("💎 Google AI")
+            self.agy_tier_badge.setVisible(data.is_running)
+
+        # 5小时配额
+        if data.gemini_5h_percent >= 0:
+            self.bar_quota_5h.setValue(int(data.gemini_5h_percent))
+            rst_txt = f" ({data.gemini_5h_reset_str})" if data.gemini_5h_reset_str else ""
+            self.agy_5h_val_lbl.setText(f"{data.gemini_5h_percent:.1f}% 剩余{rst_txt}")
+            if data.gemini_5h_percent <= 20.0:
+                color_5h = "#ef4444"
+            elif data.gemini_5h_percent <= 50.0:
+                color_5h = "#f59e0b"
+            else:
+                color_5h = "#10b981"
+            self.agy_5h_val_lbl.setStyleSheet(f"color: {color_5h}; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+            self.bar_quota_5h.setStyleSheet(f"""
+                QProgressBar {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 3px; }}
+                QProgressBar::chunk {{ background-color: {color_5h}; border-radius: 2px; }}
+            """)
+        else:
+            self.bar_quota_5h.setValue(0)
+            self.agy_5h_val_lbl.setText("-- (未连接)")
+            self.agy_5h_val_lbl.setStyleSheet("color: #64748b; font-family: 'Cascadia Code'; font-size: 11px;")
+
+        # 周度配额
+        if data.gemini_weekly_percent >= 0:
+            self.bar_quota_wk.setValue(int(data.gemini_weekly_percent))
+            rst_txt = f" ({data.gemini_weekly_reset_str})" if data.gemini_weekly_reset_str else ""
+            self.agy_wk_val_lbl.setText(f"{data.gemini_weekly_percent:.1f}% 剩余{rst_txt}")
+            if data.gemini_weekly_percent <= 20.0:
+                color_wk = "#ef4444"
+            elif data.gemini_weekly_percent <= 50.0:
+                color_wk = "#f59e0b"
+            else:
+                color_wk = "#38bdf8"
+            self.agy_wk_val_lbl.setStyleSheet(f"color: {color_wk}; font-family: 'Cascadia Code'; font-size: 11px; font-weight: bold;")
+            self.bar_quota_wk.setStyleSheet(f"""
+                QProgressBar {{ background-color: #1e293b; border: 1px solid #334155; border-radius: 3px; }}
+                QProgressBar::chunk {{ background-color: {color_wk}; border-radius: 2px; }}
+            """)
+        else:
+            self.bar_quota_wk.setValue(0)
+            self.agy_wk_val_lbl.setText("-- (未连接)")
+            self.agy_wk_val_lbl.setStyleSheet("color: #64748b; font-family: 'Cascadia Code'; font-size: 11px;")
+
+        # 第三方模型状态
+        if data.third_party_5h_percent >= 0:
+            self.agy_tp_status.setText(f"Claude / GPT 限额: 5h {data.third_party_5h_percent:.0f}% | 周 {data.third_party_weekly_percent:.0f}%")
+        else:
+            self.agy_tp_status.setText("第三方模型: 待检测")
+
+        # 配额紧张预警 (<15%)
+        is_tension = (0 <= data.gemini_5h_percent < 15.0) or (0 <= data.gemini_weekly_percent < 15.0)
+        self.lbl_quota_warning.setVisible(is_tension)
+
         # 上下文水位
         self.agy_ctx_lbl.setText(f"{data.context_tokens:,} / {data.context_limit:,} Tokens ({data.context_percent:.1f}%)")
         self.bar_agy_ctx.set_data(
@@ -731,27 +943,26 @@ class DashboardWindow(QWidget):
         self.agy_thinking_tok_lbl.setText(f"{data.thinking_tokens:,} ({(data.thinking_tokens / tot) * 100:.1f}%)")
         self.agy_tool_tok_lbl.setText(f"{data.tool_tokens:,} ({(data.tool_tokens / tot) * 100:.1f}%)")
 
-        # 消耗统计
+        # 单轮消耗统计
         self.agy_turn_lbl.setText(f"+{data.last_turn_total:,} (In: {data.last_turn_input} | Out: {data.last_turn_output})")
-        self.agy_today_lbl.setText(f"{data.today_tokens:,} Tokens")
-        if data.total_tokens >= 1_000_000:
-            self.agy_total_lbl.setText(f"{data.total_tokens / 1_000_000:.2f} M Tokens ({data.total_conversations} 会话)")
+
+        # Token 消耗与成本概览
+        self.lbl_today_tok.setText(f"{data.today_tokens:,} Tokens")
+        self.lbl_today_cost.setText(f"${data.today_cost_usd:.2f} (¥{data.today_cost_usd * 7.2:.2f})")
+        self.lbl_total_tok.setText(f"{data.total_tokens:,} Tokens")
+        self.lbl_total_cost.setText(f"${data.total_cost_usd:.2f} (¥{data.total_cost_usd * 7.2:.2f})")
+        self.lbl_total_convs.setText(f"{data.total_conversations} 个会话")
+
+        if data.model_breakdown:
+            top_models = sorted(
+                data.model_breakdown.items(),
+                key=lambda x: x[1].get("tokens", 0),
+                reverse=True
+            )[:2]
+            parts = [f"{m.split('/')[-1]}: {v.get('percent', 0):.0f}%" for m, v in top_models]
+            self.lbl_top_models.setText(" | ".join(parts) if parts else "暂无")
         else:
-            self.agy_total_lbl.setText(f"{data.total_tokens:,} Tokens ({data.total_conversations} 会话)")
-
-        # 估算费用 (按各会话实际选择的模型费率动态加权计算)
-        est_usd = data.total_cost_usd
-        est_cny = est_usd * 7.2
-        self.agy_cost_lbl.setText(f"约 ${est_usd:.2f} / ¥{est_cny:.2f}")
-
-        # 各模型明细 Tooltip
-        tip_lines = ["各模型历史消耗及费用明细 (按会话模型加权):"]
-        for m_name, m_info in (data.model_breakdown or {}).items():
-            m_cnt = m_info.get("count", 0)
-            m_tok = m_info.get("tokens", 0)
-            m_c = m_info.get("cost_usd", 0.0)
-            tip_lines.append(f"• {m_name}: {m_cnt} 个会话 | {m_tok:,} tok | ${m_c:.2f} (¥{m_c*7.2:.2f})")
-        self.agy_cost_lbl.setToolTip("\n".join(tip_lines))
+            self.lbl_top_models.setText(data.model_name or "默认模型")
 
         # 历史会话列表
         if data.recent_conversations:

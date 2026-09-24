@@ -47,6 +47,7 @@ def main():
     }
     initial_mode = mode_map.get(cfg.hud_mode, HUDMode.VERTICAL)
     floating_bar.set_mode(initial_mode)
+    floating_bar.set_scale(getattr(cfg, "hud_scale", 1.0))
     floating_bar._set_opacity(cfg.opacity)
     floating_bar._toggle_pin(cfg.is_pinned)
     floating_bar.locked_position = cfg.locked_position
@@ -55,6 +56,7 @@ def main():
     # 同步状态至仪表盘控件
     hud_idx = 1 if cfg.hud_mode == "HORIZONTAL" else (2 if cfg.hud_mode == "MINI" else 0)
     dashboard.combo_hud.setCurrentIndex(hud_idx)
+    dashboard.set_scale_ui(getattr(cfg, "hud_scale", 1.0))
     int_idx = 0 if abs(cfg.sample_interval - 0.5) < 0.1 else (2 if abs(cfg.sample_interval - 2.0) < 0.1 else 1)
     dashboard.combo_interval.setCurrentIndex(int_idx)
     dashboard.set_auto_start_ui(cfg.auto_start)
@@ -67,6 +69,7 @@ def main():
     # 6. 绑定配置持久化保存联动
     def save_state():
         cfg.hud_mode = floating_bar.hud_mode.name
+        cfg.hud_scale = getattr(floating_bar, "scale_factor", 1.0)
         cfg.pos_x = floating_bar.x()
         cfg.pos_y = floating_bar.y()
         cfg.opacity = floating_bar.opacity_val
@@ -78,6 +81,7 @@ def main():
 
     floating_bar.position_changed_signal.connect(lambda x, y: save_state())
     floating_bar.mode_changed_signal.connect(lambda m: save_state())
+    floating_bar.scale_changed_signal.connect(lambda s: save_state())
     floating_bar.opacity_changed_signal.connect(lambda o: save_state())
     floating_bar.pin_changed_signal.connect(lambda p: save_state())
     floating_bar.lock_changed_signal.connect(lambda l: save_state())
@@ -177,6 +181,9 @@ def main():
             floating_bar.set_mode(mode_map[mode_str])
 
     dashboard.hud_mode_signal.connect(on_dashboard_hud_mode)
+    dashboard.hud_scale_signal.connect(floating_bar.set_scale)
+    dashboard.reset_hud_position_signal.connect(floating_bar.reset_to_primary_screen)
+    floating_bar.scale_changed_signal.connect(dashboard.set_scale_ui)
 
     # 鼠标穿透跨组件状态同步
     def on_click_thru_changed(enabled):

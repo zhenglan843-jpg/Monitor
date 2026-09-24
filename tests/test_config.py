@@ -14,6 +14,8 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(cfg.is_pinned)
         self.assertFalse(cfg.click_through)
         self.assertEqual(cfg.sample_interval, 1.0)
+        self.assertAlmostEqual(cfg.hud_scale, 1.0)
+        self.assertFalse(cfg.auto_game_mode)
         self.assertEqual(cfg.hotkey_click_through, "Ctrl+Shift+P")
 
     def test_save_and_load(self):
@@ -27,7 +29,9 @@ class TestConfig(unittest.TestCase):
                     opacity=0.75,
                     is_pinned=False,
                     click_through=True,
-                    sample_interval=0.5
+                    sample_interval=0.5,
+                    hud_scale=1.2,
+                    auto_game_mode=True
                 )
                 ConfigManager.save(cfg)
                 self.assertTrue(os.path.exists(test_file))
@@ -40,6 +44,8 @@ class TestConfig(unittest.TestCase):
                 self.assertFalse(loaded.is_pinned)
                 self.assertTrue(loaded.click_through)
                 self.assertAlmostEqual(loaded.sample_interval, 0.5)
+                self.assertAlmostEqual(loaded.hud_scale, 1.2)
+                self.assertTrue(loaded.auto_game_mode)
 
     def test_corrupt_config_fallback(self):
         with tempfile.TemporaryDirectory() as tmpdir:

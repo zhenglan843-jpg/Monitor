@@ -93,6 +93,18 @@ class TrayManager:
         act_m = hud_sub.addAction("极简微型徽章")
         act_m.triggered.connect(lambda: self.floating_bar.set_mode(HUDMode.MINI))
 
+        # HUD 缩放比例
+        scale_sub = menu.addMenu("🔍 HUD 缩放比例")
+        for sc, sc_lbl in [(0.8, "80% (紧凑)"), (1.0, "100% (默认)"), (1.2, "120% (放大)"), (1.4, "140% (超大)")]:
+            act_s = scale_sub.addAction(sc_lbl)
+            act_s.setCheckable(True)
+            act_s.setChecked(abs(getattr(self.floating_bar, "scale_factor", 1.0) - sc) < 0.05)
+            act_s.triggered.connect(lambda checked, s=sc: self.floating_bar.set_scale(s))
+
+        # 重置位置
+        act_reset = menu.addAction("📍 重置 HUD 位置 (主屏右上角)")
+        act_reset.triggered.connect(self.floating_bar.reset_to_primary_screen)
+
         # 鼠标穿透开关 (游戏玩家专属免干扰模式)
         self.act_click_through = menu.addAction("🖱️ 鼠标穿透模式 (Ctrl+Shift+P)")
         self.act_click_through.setCheckable(True)
@@ -179,6 +191,11 @@ class TrayManager:
 
         if self._last_agy and self._last_agy.is_running:
             a = self._last_agy
-            tip_lines.append(f"🤖 Antigravity: {a.agent_status} ({a.context_tokens:,} tok / {a.context_percent:.1f}%)")
+            agy_line = f"🤖 Antigravity: {a.agent_status} ({a.context_tokens:,} tok / {a.context_percent:.1f}%)"
+            if a.gemini_5h_percent >= 0:
+                agy_line += f" | 额度: 5h {a.gemini_5h_percent:.0f}%"
+                if a.gemini_weekly_percent >= 0:
+                    agy_line += f", 周 {a.gemini_weekly_percent:.0f}%"
+            tip_lines.append(agy_line)
 
         self.tray.setToolTip("\n".join(tip_lines) if tip_lines else "Monitor 专业性能与AI监控运行中")

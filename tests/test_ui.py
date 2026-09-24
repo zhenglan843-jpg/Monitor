@@ -1,59 +1,66 @@
 import sys
 import os
-import time
+import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QTimer
 from src.collector import SystemCollector, MetricData
 from src.floating_bar import FloatingBar
 from src.dashboard import DashboardWindow
 from src.tray import TrayManager
 
-def smoke_test_ui():
-    print("=== 开始 UI 界面与交互烟雾测试 ===")
-    app = QApplication(sys.argv)
 
-    collector = SystemCollector(interval=0.5)
-    floating_bar = FloatingBar()
-    dashboard = DashboardWindow()
-    tray = TrayManager(app, floating_bar, dashboard, collector)
+class TestUiSmoke(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
 
-    # 模拟数据更新
-    mock_data = MetricData(
-        cpu_percent=24.5,
-        cpu_freq_mhz=2800.0,
-        ram_percent=45.2,
-        ram_used_gb=14.2,
-        ram_total_gb=32.0,
-        gpu_available=True,
-        gpu_name="NVIDIA GeForce RTX 4050 Laptop GPU",
-        gpu_percent=18.0,
-        gpu_temp=52,
-        gpu_mem_percent=22.0,
-        gpu_mem_used_mb=1300,
-        gpu_mem_total_mb=6144,
-        net_recv_str="1.2 MB/s",
-        net_sent_str="128 KB/s",
-        disks=[{'mount': 'C:\\', 'used_gb': 120, 'total_gb': 500, 'percent': 24.0}],
-        top_processes=[{'pid': 1234, 'name': 'test.exe', 'cpu_percent': 12.0, 'mem_mb': 150.0}]
-    )
+    def test_ui_components_smoke(self):
+        collector = SystemCollector(interval=0.5)
+        floating_bar = FloatingBar()
+        dashboard = DashboardWindow()
+        tray = TrayManager(self.app, floating_bar, dashboard, collector)
 
-    floating_bar.show()
-    floating_bar.update_metrics(mock_data)
-    dashboard.show()
-    dashboard.update_metrics(mock_data)
-    tray.update_tooltip(mock_data)
+        mock_data = MetricData(
+            cpu_percent=24.5,
+            cpu_freq_mhz=2800.0,
+            ram_percent=45.2,
+            ram_used_gb=14.2,
+            ram_total_gb=32.0,
+            gpu_available=True,
+            gpu_name="NVIDIA GeForce RTX 4050 Laptop GPU",
+            gpu_percent=18.0,
+            gpu_temp=52,
+            gpu_mem_percent=22.0,
+            gpu_mem_used_mb=1300,
+            gpu_mem_total_mb=6144,
+            net_recv_str="1.2 MB/s",
+            net_sent_str="128 KB/s",
+            disks=[{'mount': 'C:\\', 'used_gb': 120, 'total_gb': 500, 'percent': 24.0}],
+            top_processes=[{'pid': 1234, 'name': 'test.exe', 'cpu_percent': 12.0, 'mem_mb': 150.0}]
+        )
 
-    print("✅ 悬浮窗显示正常，尺寸:", floating_bar.size())
-    print("✅ 仪表盘显示正常，尺寸:", dashboard.size())
+        floating_bar.update_metrics(mock_data)
+        dashboard.update_metrics(mock_data)
+        tray.update_tooltip(mock_data)
+        self.app.processEvents()
 
-    # 定时 1 秒后自动关闭退出测试
-    QTimer.singleShot(1000, lambda: (floating_bar.close(), dashboard.close(), app.quit()))
+        self.assertGreater(floating_bar.width(), 0)
+        self.assertGreater(floating_bar.height(), 0)
+        self.assertGreater(dashboard.width(), 0)
+        self.assertGreater(dashboard.height(), 0)
 
-    app.exec()
-    print("=== UI 烟雾测试顺利通过！ ===")
+        floating_bar.close()
+        dashboard.close()
+        collector.stop()
+
 
 if __name__ == "__main__":
-    smoke_test_ui()
+    unittest.main()

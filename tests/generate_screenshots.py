@@ -3,11 +3,16 @@ import os
 import math
 import time
 
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 from src.collector import MetricData
 from src.antigravity_collector import AntigravityMetrics
 from src.floating_bar import FloatingBar, HUDMode
@@ -97,10 +102,13 @@ def generate():
         last_turn_input=180,
         last_turn_output=420,
         last_turn_total=600,
-        today_tokens=680000,
-        total_tokens=1850000,
-        today_cost_usd=0.92,
-        total_cost_usd=2.50,
+        gemini_5h_percent=88.5,
+        gemini_5h_reset_str="3小时15分后刷新",
+        gemini_weekly_percent=60.0,
+        gemini_weekly_reset_str="20小时后刷新",
+        third_party_5h_percent=100.0,
+        third_party_weekly_percent=100.0,
+        user_tier_name="Google AI Pro",
         total_conversations=88,
         agent_status="待机就绪",
         status_color="#22c55e",

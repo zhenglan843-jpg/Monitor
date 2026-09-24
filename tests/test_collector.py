@@ -1,60 +1,63 @@
-import time
-import os
 import sys
+import os
+import time
+import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import psutil
-from PyQt6.QtCore import QCoreApplication
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+from PyQt6.QtWidgets import QApplication
 from src.collector import SystemCollector, MetricData
 
-def run_test():
-    print("=== 开始硬件性能采集验证 ===")
-    app = QCoreApplication([])
-    t0 = time.time()
-    collector = SystemCollector(interval=0.5)
-    received = []
 
-    collector.metrics_updated.connect(lambda d: received.append(d))
-    collector.start()
+class TestCollector(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
 
-    # 常态轻量采样 1.5 秒
-    end_t = time.time() + 1.5
-    while time.time() < end_t:
-        app.processEvents()
-        time.sleep(0.05)
+    def test_collector_lifecycle_and_metrics(self):
+        collector = SystemCollector(interval=0.1)
+        received = []
+        collector.metrics_updated.connect(lambda d: received.append(d))
+        collector.start()
 
-    # 切换至详细采样 1.5 秒
-    collector.set_detailed_mode(True)
-    end_t = time.time() + 1.5
-    while time.time() < end_t:
-        app.processEvents()
-        time.sleep(0.05)
+        # 轻量模式采样
+        t_end = time.time() + 0.35
+        while time.time() < t_end:
+            self.app.processEvents()
+            time.sleep(0.02)
 
-    collector.stop()
-    app.processEvents()
+        # 详细模式采样
+        collector.set_detailed_mode(True)
+        t_end = time.time() + 0.35
+        while time.time() < t_end:
+            self.app.processEvents()
+            time.sleep(0.02)
 
-    total_time = time.time() - t0
-    print(f"总测试耗时: {total_time:.2f}s, 收到有效指标帧数: {len(received)}")
+        collector.stop()
+        self.app.processEvents()
 
-    assert len(received) >= 4, f"采样帧数不足: {len(received)}"
-    latest = received[-1]
-    print(f"✅ CPU: {latest.cpu_percent}% (主频 {latest.cpu_freq_mhz} MHz)")
-    print(f"✅ 内存: {latest.ram_percent}% (已用 {latest.ram_used_gb:.2f} GB / 总计 {latest.ram_total_gb:.2f} GB)")
-    print(f"✅ GPU: 可用={latest.gpu_available} | 型号={latest.gpu_name} | 负载={latest.gpu_percent}% | 温度={latest.gpu_temp}°C")
-    print(f"✅ 网络: 下载={latest.net_recv_str} | 上传={latest.net_sent_str}")
-    print(f"✅ 磁盘分区数: {len(latest.disks)}")
-    for d in latest.disks:
-        print(f"   -> {d['mount']} 使用率: {d['percent']}% ({d['used_gb']:.1f}/{d['total_gb']:.1f} GB)")
-    print(f"✅ 高占用进程数: {len(latest.top_processes)}")
-    for p in latest.top_processes:
-        print(f"   -> {p['name']} (PID {p['pid']}): CPU {p['cpu_percent']}%, 内存 {p['mem_mb']:.1f} MB")
+        self.assertGreaterEqual(len(received), 2, "采样帧数不足")
+        latest = received[-1]
+        self.assertIsInstance(latest.cpu_name, str)
+        self.assertGreaterEqual(latest.cpu_percent, 0.0)
+        self.assertGreaterEqual(latest.ram_percent, 0.0)
+        self.assertIsInstance(latest.net_recv_str, str)
+        self.assertIsInstance(latest.net_sent_str, str)
+        self.assertIsInstance(latest.history_cpu, list)
+        self.assertGreater(len(latest.history_cpu), 0)
 
-    # 验证自身进程资源占用
-    proc = psutil.Process(os.getpid())
-    mem_info = proc.memory_info()
-    print(f"✅ 采集模块自身内存占用: {mem_info.rss / (1024**2):.2f} MB (极低开销)")
-    print("=== 所有采集项验证通过！ ===")
+    def test_collector_init_and_stop(self):
+        collector = SystemCollector(interval=0.5)
+        self.assertIsNotNone(collector)
+        self.assertIsInstance(collector._cpu_name, str)
+        collector.stop()
+
 
 if __name__ == "__main__":
-    run_test()
+    unittest.main()

@@ -1,15 +1,29 @@
+import sys
 import time
 import os
 import socket
 import threading
 import collections
 import ctypes
+from ctypes import wintypes
+import struct
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from PyQt6.QtCore import QThread, pyqtSignal
 
 import psutil
 import warnings
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 try:
     with warnings.catch_warnings():
@@ -19,6 +33,126 @@ try:
 except ImportError:
     _HAS_NVML = False
 
+
+class MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ('dwLength', ctypes.c_ulong),
+        ('dwMemoryLoad', ctypes.c_ulong),
+        ('ullTotalPhys', ctypes.c_ulonglong),
+        ('ullAvailPhys', ctypes.c_ulonglong),
+        ('ullTotalPageFile', ctypes.c_ulonglong),
+        ('ullAvailPageFile', ctypes.c_ulonglong),
+        ('ullTotalVirtual', ctypes.c_ulonglong),
+        ('ullAvailVirtual', ctypes.c_ulonglong),
+        ('sullAvailExtendedVirtual', ctypes.c_ulonglong),
+    ]
+
+
+class IP_OPTION_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ('Ttl', ctypes.c_ubyte),
+        ('Tos', ctypes.c_ubyte),
+        ('Flags', ctypes.c_ubyte),
+        ('OptionsSize', ctypes.c_ubyte),
+        ('OptionsData', ctypes.c_void_p),
+    ]
+
+
+class ICMP_ECHO_REPLY(ctypes.Structure):
+    _fields_ = [
+        ('Address', wintypes.ULONG),
+        ('Status', wintypes.ULONG),
+        ('RoundTripTime', wintypes.ULONG),
+        ('DataSize', wintypes.USHORT),
+        ('Reserved', wintypes.USHORT),
+        ('Data', ctypes.c_void_p),
+        ('Options', IP_OPTION_INFORMATION),
+    ]
+
+
+try:
+    _iphlpapi = ctypes.windll.iphlpapi
+    _iphlpapi.IcmpCreateFile.restype = wintypes.HANDLE
+    _iphlpapi.IcmpCloseHandle.argtypes = [wintypes.HANDLE]
+    _iphlpapi.IcmpCloseHandle.restype = wintypes.BOOL
+    _iphlpapi.IcmpSendEcho.argtypes = [
+        wintypes.HANDLE,
+        wintypes.ULONG,
+        wintypes.LPVOID,
+        wintypes.WORD,
+        ctypes.c_void_p,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    _iphlpapi.IcmpSendEcho.restype = wintypes.DWORD
+    _HAS_ICMP_API = True
+except Exception:
+    _HAS_ICMP_API = False
+
+
+class PDH_FMT_COUNTERVALUE_ITEM_W(ctypes.Structure):
+    _fields_ = [
+        ('szName', wintypes.LPWSTR),
+        ('CStatus', wintypes.DWORD),
+        ('dummy', wintypes.DWORD),
+        ('doubleValue', ctypes.c_double)
+    ]
+
+
+class PdhGpuSampler:
+    """Windows 原生性能计数器 GPU 采样器 (跨厂商支持 AMD / Intel Arc / 核显 / 深度睡眠独显)"""
+    def __init__(self):
+        self.available = False
+        self._h_query = wintypes.HANDLE()
+        self._h_counter = wintypes.HANDLE()
+        try:
+            self._pdh = ctypes.windll.pdh
+            if self._pdh.PdhOpenQueryW(None, 0, ctypes.byref(self._h_query)) == 0:
+                res = self._pdh.PdhAddEnglishCounterW(
+                    self._h_query,
+                    r'\GPU Engine(*_engtype_3D)\Utilization Percentage',
+                    0,
+                    ctypes.byref(self._h_counter)
+                )
+                if res == 0:
+                    self._pdh.PdhCollectQueryData(self._h_query)
+                    self.available = True
+        except Exception:
+            self.available = False
+
+    def sample(self) -> float:
+        if not self.available:
+            return 0.0
+        try:
+            if self._pdh.PdhCollectQueryData(self._h_query) != 0:
+                return 0.0
+            buffer_size = wintypes.DWORD(0)
+            item_count = wintypes.DWORD(0)
+            PDH_FMT_DOUBLE = 0x00000200
+            self._pdh.PdhGetFormattedCounterArrayW(
+                self._h_counter, PDH_FMT_DOUBLE, ctypes.byref(buffer_size), ctypes.byref(item_count), None
+            )
+            if buffer_size.value == 0:
+                return 0.0
+            buf = ctypes.create_string_buffer(buffer_size.value)
+            if self._pdh.PdhGetFormattedCounterArrayW(
+                self._h_counter, PDH_FMT_DOUBLE, ctypes.byref(buffer_size), ctypes.byref(item_count), ctypes.byref(buf)
+            ) == 0:
+                items = ctypes.cast(buf, ctypes.POINTER(PDH_FMT_COUNTERVALUE_ITEM_W))
+                total = sum(items[i].doubleValue for i in range(item_count.value) if items[i].CStatus == 0)
+                return max(0.0, min(100.0, float(total)))
+        except Exception:
+            pass
+        return 0.0
+
+    def close(self):
+        if self.available and self._h_query:
+            try:
+                self._pdh.PdhCloseQuery(self._h_query)
+            except Exception:
+                pass
+            self.available = False
 
 
 def format_speed(bytes_per_sec: float) -> str:
@@ -36,20 +170,6 @@ def format_speed(bytes_per_sec: float) -> str:
 def format_size(bytes_num: float) -> str:
     """格式化容量"""
     return f"{bytes_num / (1024 ** 3):.1f} GB"
-
-
-class MEMORYSTATUSEX(ctypes.Structure):
-    _fields_ = [
-        ('dwLength', ctypes.c_ulong),
-        ('dwMemoryLoad', ctypes.c_ulong),
-        ('ullTotalPhys', ctypes.c_ulonglong),
-        ('ullAvailPhys', ctypes.c_ulonglong),
-        ('ullTotalPageFile', ctypes.c_ulonglong),
-        ('ullAvailPageFile', ctypes.c_ulonglong),
-        ('ullTotalVirtual', ctypes.c_ulonglong),
-        ('ullAvailVirtual', ctypes.c_ulonglong),
-        ('sullAvailExtendedVirtual', ctypes.c_ulonglong),
-    ]
 
 
 @dataclass
@@ -149,18 +269,23 @@ class SystemCollector(QThread):
             self._last_disk_read = 0
             self._last_disk_write = 0
 
-        # 网络 Ping 延迟异步缓存
+        # 网络 Ping 延迟异步缓存与常驻守护线程
         self._last_ping_ms = -1.0
-        self._ping_counter = 0
         self._ping_fail_count = 0
+        self._stop_event = threading.Event()
 
-        # 显卡初始化 (NVML + 注册表通用 Fallback)
+        # 显卡初始化 (NVML + Windows PDH 通用 Fallback)
+        self._pdh_gpu = PdhGpuSampler()
         self._nvml_initialized = False
         self._gpu_handle = None
         self._gpu_name = ""
         self._fallback_gpu_name = ""
         self._gpu_power_limit = 0.0
         self._init_gpu()
+
+        # 启动常驻轻量 Ping 守护线程 (杜绝频繁创建/销毁线程开销)
+        self._ping_thread = threading.Thread(target=self._ping_worker_loop, daemon=True)
+        self._ping_thread.start()
 
         # 详细模式节流缓存
         self._cached_disks: List[Dict[str, Any]] = []
@@ -239,11 +364,52 @@ class SystemCollector(QThread):
         if not self._nvml_initialized:
             self._fallback_gpu_name = self._detect_fallback_gpu()
 
-    def _async_probe_ping(self):
-        """轻量级非阻塞 Socket 握手延迟探测 (高精度纳秒计时 + 多路由备选 + 防抖滤波)"""
-        def _probe():
-            targets = [('223.5.5.5', 53), ('114.114.114.114', 53), ('223.5.5.5', 443)]
-            for host, port in targets:
+    def _probe_ping_once(self):
+        """执行单次网络往返延迟探测 (Win32 ICMP 优先 + TCP 兜底 + EWMA 平滑滤波)"""
+        try:
+            # 1. 优先使用 Windows 原生 Win32 ICMP Echo API
+            if _HAS_ICMP_API:
+                icmp_targets = ['223.5.5.5', '119.29.29.29', '180.76.76.76', '1.1.1.1']
+                handle = _iphlpapi.IcmpCreateFile()
+                if handle:
+                    try:
+                        send_data = b'monitor_ping'
+                        reply_size = ctypes.sizeof(ICMP_ECHO_REPLY) + len(send_data) + 128
+                        reply_buf = ctypes.create_string_buffer(reply_size)
+
+                        for ip_str in icmp_targets:
+                            try:
+                                ip_ulong = struct.unpack('<I', socket.inet_aton(ip_str))[0]
+                                res = _iphlpapi.IcmpSendEcho(
+                                    handle,
+                                    ip_ulong,
+                                    send_data,
+                                    len(send_data),
+                                    None,
+                                    reply_buf,
+                                    reply_size,
+                                    800  # 800ms 超时
+                                )
+                                if res > 0:
+                                    reply = ICMP_ECHO_REPLY.from_buffer(reply_buf)
+                                    if reply.Status == 0:
+                                        rtt = float(reply.RoundTripTime)
+                                        # 广域网正常物理往返时延保底 1.0ms
+                                        valid_rtt = max(1.0, rtt)
+                                        if self._last_ping_ms > 0:
+                                            self._last_ping_ms = round(0.7 * self._last_ping_ms + 0.3 * valid_rtt, 1)
+                                        else:
+                                            self._last_ping_ms = round(valid_rtt, 1)
+                                        self._ping_fail_count = 0
+                                        return
+                            except Exception:
+                                continue
+                    finally:
+                        _iphlpapi.IcmpCloseHandle(handle)
+
+            # 2. 兜底策略：TCP 探测
+            tcp_targets = [('223.5.5.5', 80), ('119.29.29.29', 80)]
+            for host, port in tcp_targets:
                 try:
                     t0 = time.perf_counter()
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -251,19 +417,28 @@ class SystemCollector(QThread):
                     s.connect((host, port))
                     ms = (time.perf_counter() - t0) * 1000.0
                     s.close()
-                    self._last_ping_ms = round(ms, 1)
-                    self._ping_fail_count = 0
-                    return
+                    if ms >= 2.0:
+                        if self._last_ping_ms > 0:
+                            self._last_ping_ms = round(0.7 * self._last_ping_ms + 0.3 * ms, 1)
+                        else:
+                            self._last_ping_ms = round(ms, 1)
+                        self._ping_fail_count = 0
+                        return
                 except Exception:
                     continue
 
-            # 仅在连续 3 次探测（约 9 秒）全部失败时才标记断网，避免单次丢包/超时导致数值频繁闪变为 --
+            # 连续 3 次探测全部失败时标记断网
             self._ping_fail_count += 1
             if self._ping_fail_count >= 3:
                 self._last_ping_ms = -1.0
+        except Exception:
+            pass
 
-        t = threading.Thread(target=_probe, daemon=True)
-        t.start()
+    def _ping_worker_loop(self):
+        """常驻轻量 Ping 守护线程 (零线程创建开销)"""
+        while not self._stop_event.is_set():
+            self._probe_ping_once()
+            self._stop_event.wait(2.0)
 
     def set_detailed_mode(self, enabled: bool):
         self.detailed_mode = enabled
@@ -273,6 +448,10 @@ class SystemCollector(QThread):
 
     def stop(self):
         self.running = False
+        self._stop_event.set()
+        if hasattr(self, "_ping_thread") and self._ping_thread.is_alive():
+            self._ping_thread.join(timeout=0.8)
+        self._pdh_gpu.close()
         self.wait(2000)
 
     def run(self):
@@ -284,15 +463,17 @@ class SystemCollector(QThread):
                 cpu_logical_cores=self._cpu_logical
             )
 
-            # 1. 采集 CPU
+            # 1. 采集 CPU (消除多核微秒级采样抖动)
             try:
-                data.cpu_percent = psutil.cpu_percent(interval=None)
                 freq = psutil.cpu_freq()
                 if freq:
                     data.cpu_freq_mhz = freq.current
-                # 在仪表盘详细模式下采样各核心独立负载
                 if self.detailed_mode:
-                    data.cpu_cores = psutil.cpu_percent(interval=None, percpu=True)
+                    cores = psutil.cpu_percent(interval=None, percpu=True)
+                    data.cpu_cores = cores
+                    data.cpu_percent = (sum(cores) / len(cores)) if cores else 0.0
+                else:
+                    data.cpu_percent = psutil.cpu_percent(interval=None)
             except Exception:
                 pass
 
@@ -333,10 +514,7 @@ class SystemCollector(QThread):
             except Exception:
                 pass
 
-            # 异步探测 Ping 延迟 (启动立即探测一次，随后每 3 秒探测一次)
-            self._ping_counter += 1
-            if self._ping_counter == 1 or self._ping_counter % 3 == 0:
-                self._async_probe_ping()
+            # 同步守护线程探测的 Ping 延迟
             data.net_ping_ms = self._last_ping_ms
 
             # 4. 采集 磁盘实时读写 I/O 速率
@@ -356,7 +534,7 @@ class SystemCollector(QThread):
             except Exception:
                 pass
 
-            # 5. 采集 GPU (优先 NVIDIA NVML 深度遥测，次级使用注册表 Fallback)
+            # 5. 采集 GPU (优先 NVIDIA NVML 深度遥测，次级使用 Windows PDH 性能计数器 Fallback)
             if self._nvml_initialized and self._gpu_handle:
                 try:
                     data.gpu_available = True
@@ -396,10 +574,16 @@ class SystemCollector(QThread):
                     # 核心温度
                     data.gpu_temp = int(pynvml.nvmlDeviceGetTemperature(self._gpu_handle, pynvml.NVML_TEMPERATURE_GPU))
                 except Exception:
-                    data.gpu_available = False
-            elif self._fallback_gpu_name:
-                data.gpu_available = True
-                data.gpu_name = self._fallback_gpu_name
+                    # NVML 句柄异常 (驱动重载/显卡进入休眠)，自动优雅降级
+                    self._nvml_initialized = False
+
+            if not self._nvml_initialized:
+                # 使用 Windows PDH 性能计数器采样 GPU 3D 核心利用率 (兼容 AMD / Intel Arc / 核显)
+                pdh_util = self._pdh_gpu.sample()
+                data.gpu_percent = pdh_util
+                if self._fallback_gpu_name or pdh_util > 0:
+                    data.gpu_available = True
+                    data.gpu_name = self._fallback_gpu_name or "Windows Generic GPU"
 
             # 6. 采集 电池状态
             try:

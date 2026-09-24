@@ -6,7 +6,10 @@ from PyQt6.QtWidgets import QApplication
 # 确保能正确导入 src 模块
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.antigravity_collector import AntigravityCollector, AntigravityMetrics, estimate_tokens, get_model_rate_per_million
+from src.antigravity_collector import (
+    AntigravityCollector, AntigravityMetrics, estimate_tokens,
+    get_model_rate_per_million, format_iso_reset_time
+)
 from src.floating_bar import FloatingBar, HUDMode
 from src.dashboard import DashboardWindow
 from src.tray import TrayManager
@@ -66,27 +69,27 @@ class TestAntigravityIntegration(unittest.TestCase):
             last_turn_input=120,
             last_turn_output=350,
             last_turn_total=470,
-            today_tokens=150000,
-            total_tokens=1850000,
-            agent_status="待机就绪"
+            agent_status="待机就绪",
+            gemini_5h_percent=88.0,
+            gemini_weekly_percent=60.0
         )
         bar.update_antigravity_metrics(metrics)
 
         # 检查水平模式
         bar.set_mode(HUDMode.HORIZONTAL)
         self.assertEqual(bar.h_ai.lbl_val.text(), "65.4k")
-        self.assertEqual(bar.h_tok.lbl_val.text(), "150k/1.85M")
+        self.assertEqual(bar.h_quo.lbl_val.text(), "88%/60%")
 
         # 检查垂直模式
         bar.set_mode(HUDMode.VERTICAL)
         self.assertEqual(bar.v_ai.lbl_val.text(), "6.2% (65.4k)")
-        self.assertEqual(bar.v_tok_today.lbl_val.text(), "150k")
-        self.assertEqual(bar.v_tok_total.lbl_val.text(), "1.85M")
+        self.assertEqual(bar.v_quo_5h.lbl_val.text(), "88%")
+        self.assertEqual(bar.v_quo_wk.lbl_val.text(), "60%")
 
         # 检查微型模式
         bar.set_mode(HUDMode.MINI)
         self.assertEqual(bar.m_ai.lbl_val.text(), "65.4k")
-        self.assertEqual(bar.m_tok.lbl_val.text(), "150k/1.85M")
+        self.assertEqual(bar.m_quo.lbl_val.text(), "88%/60%")
 
     def test_dashboard_ai_tab_update(self):
         dash = DashboardWindow()
@@ -106,8 +109,12 @@ class TestAntigravityIntegration(unittest.TestCase):
             last_turn_input=60,
             last_turn_output=140,
             last_turn_total=200,
-            today_tokens=680000,
-            total_tokens=1800000,
+            today_tokens=15000,
+            today_cost_usd=0.02,
+            total_tokens=250000,
+            total_cost_usd=0.35,
+            gemini_5h_percent=12.0,
+            gemini_weekly_percent=85.0,
             total_conversations=88,
             agent_status="待机就绪",
             status_color="#22c55e",
@@ -121,8 +128,17 @@ class TestAntigravityIntegration(unittest.TestCase):
         self.assertIn("78,900", dash.agy_ctx_lbl.text())
         self.assertEqual(dash.bar_agy_ctx.value(), 7)
         self.assertIn("200", dash.agy_turn_lbl.text())
-        self.assertIn("680,000", dash.agy_today_lbl.text())
         self.assertEqual(dash.table_agy_recent.rowCount(), 1)
+        self.assertIn("15,000", dash.lbl_today_tok.text())
+        self.assertIn("250,000", dash.lbl_total_tok.text())
+        self.assertIn("88", dash.lbl_total_convs.text())
+        # 配额 < 15% 时紧张预警显式开启 (非 hidden)
+        self.assertFalse(dash.lbl_quota_warning.isHidden())
+
+        # 缩放 UI 联动
+        dash.set_scale_ui(1.2)
+        self.assertEqual(dash.combo_scale.currentIndex(), 2)
+        dash.close()
 
     def test_tray_tooltip_with_ai(self):
         bar = FloatingBar()
@@ -142,6 +158,59 @@ class TestAntigravityIntegration(unittest.TestCase):
         self.assertIn("Intel Core Ultra 5", tooltip)
         self.assertIn("Antigravity: 待机就绪", tooltip)
         self.assertIn("85,000 tok", tooltip)
+
+    def test_format_iso_reset_time(self):
+        import datetime
+        self.assertEqual(format_iso_reset_time(""), "")
+        self.assertEqual(format_iso_reset_time("invalid-date"), "")
+        # 模拟未来 2 小时
+        future_2h = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2, minutes=15)).isoformat()
+        res = format_iso_reset_time(future_2h)
+        self.assertIn("小时", res)
+        self.assertIn("刷新", res)
+
+    def test_official_quota_integration(self):
+        dash = DashboardWindow()
+        bar = FloatingBar()
+        tray = TrayManager(self.app, bar, dash, SystemCollector())
+
+        metrics = AntigravityMetrics(
+            is_running=True,
+            user_tier_name="Google AI Pro",
+            gemini_5h_percent=88.5,
+            gemini_5h_reset_str="3小时15分后刷新",
+            gemini_weekly_percent=60.0,
+            gemini_weekly_reset_str="20小时后刷新",
+            third_party_5h_percent=100.0,
+            third_party_weekly_percent=100.0
+        )
+
+        # 检查仪表盘配额渲染
+        dash.update_antigravity_metrics(metrics)
+        self.assertIn("Google AI Pro", dash.agy_tier_badge.text())
+        self.assertEqual(dash.bar_quota_5h.value(), 88)
+        self.assertEqual(dash.bar_quota_wk.value(), 60)
+        self.assertIn("88.5%", dash.agy_5h_val_lbl.text())
+        self.assertIn("60.0%", dash.agy_wk_val_lbl.text())
+        self.assertIn("100%", dash.agy_tp_status.text())
+
+        # 检查悬浮条 Tooltip 与直接渲染的数值
+        bar.update_antigravity_metrics(metrics)
+        self.assertEqual(bar.v_quo_5h.lbl_val.text(), "88%")
+        self.assertEqual(bar.v_quo_wk.lbl_val.text(), "60%")
+        self.assertEqual(bar.h_quo.lbl_val.text(), "88%/60%")
+        self.assertEqual(bar.m_quo.lbl_val.text(), "88%/60%")
+
+        tip_h = bar.h_ai.toolTip()
+        self.assertIn("88.5%", tip_h)
+        self.assertIn("60.0%", tip_h)
+        self.assertIn("Google AI Pro", tip_h)
+
+        # 检查系统托盘 Tooltip
+        tray.update_tooltip(agy_data=metrics)
+        tray_tip = tray.tray.toolTip()
+        self.assertIn("5h 88%", tray_tip)
+        self.assertIn("周 60%", tray_tip)
 
 
 if __name__ == "__main__":

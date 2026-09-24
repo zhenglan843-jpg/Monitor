@@ -1,6 +1,18 @@
+import sys
+import os
+import unittest
 import ctypes
 import ctypes.wintypes
 import psutil
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 
 def get_foreground_info():
     user32 = ctypes.windll.user32
@@ -17,6 +29,15 @@ def get_foreground_info():
         pass
     return hwnd, buff.value, pid.value, p_name
 
+
+class TestForeground(unittest.TestCase):
+    def test_get_foreground_info(self):
+        hwnd, title, pid, name = get_foreground_info()
+        self.assertIsInstance(hwnd, int)
+        self.assertIsInstance(title, str)
+        self.assertIsInstance(pid, int)
+        self.assertIsInstance(name, str)
+
+
 if __name__ == "__main__":
-    h, title, p, name = get_foreground_info()
-    print(f"Foreground: '{title}' | PID: {p} | Name: {name}")
+    unittest.main()

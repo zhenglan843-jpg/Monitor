@@ -1,7 +1,7 @@
 from enum import Enum
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QMenu, QStackedWidget
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QMenu, QStackedWidget, QApplication
 )
 from PyQt6.QtGui import QColor, QFont, QCursor, QPainter
 from .collector import MetricData
@@ -117,6 +117,7 @@ class FloatingBar(QWidget):
     opacity_changed_signal = pyqtSignal(float)
     pin_changed_signal = pyqtSignal(bool)
     lock_changed_signal = pyqtSignal(bool)
+    scale_changed_signal = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,6 +128,7 @@ class FloatingBar(QWidget):
         self.is_pinned = True
         self.click_through = False
         self.opacity_val = 0.92
+        self.scale_factor = 1.0
 
         self._init_window()
         self._init_pages()
@@ -228,11 +230,11 @@ class FloatingBar(QWidget):
         self.h_ai = MetricItem("AI", "--", val_width=52)
         layout_h.addWidget(self.h_ai)
 
-        self.h_sep_tok = self._create_separator()
-        layout_h.addWidget(self.h_sep_tok)
+        self.h_sep_quo = self._create_separator()
+        layout_h.addWidget(self.h_sep_quo)
 
-        self.h_tok = MetricItem("TOK", "--/--", val_width=92)
-        layout_h.addWidget(self.h_tok)
+        self.h_quo = MetricItem("QUOTA", "--/--", val_width=76)
+        layout_h.addWidget(self.h_quo)
 
         self.stack.addWidget(self.page_h)
 
@@ -273,16 +275,16 @@ class FloatingBar(QWidget):
         self.v_ai = MetricItem("AI 上下文", "--", val_width=60, is_vertical=True)
         layout_v.addWidget(self.v_ai)
 
-        self.v_tok_today = MetricItem("今日 Token", "0", val_width=60, is_vertical=True)
-        layout_v.addWidget(self.v_tok_today)
+        self.v_quo_5h = MetricItem("5h 额度", "--", val_width=60, is_vertical=True)
+        layout_v.addWidget(self.v_quo_5h)
 
-        self.v_tok_total = MetricItem("累计 Token", "0", val_width=60, is_vertical=True)
-        layout_v.addWidget(self.v_tok_total)
+        self.v_quo_wk = MetricItem("周度额度", "--", val_width=60, is_vertical=True)
+        layout_v.addWidget(self.v_quo_wk)
 
         self.stack.addWidget(self.page_v)
 
         # -------------------------------------------------------------
-        # 页面 2: 极简微型徽章 (MINI) - 清晰呈现 CPU、GPU(含温度)、RAM、AI、TOK
+        # 页面 2: 极简微型徽章 (MINI) - 清晰呈现 CPU、GPU(含温度)、RAM、AI、QUOTA
         # -------------------------------------------------------------
         self.page_m = QWidget()
         self.page_m.setStyleSheet("background: transparent;")
@@ -308,28 +310,30 @@ class FloatingBar(QWidget):
         self.m_ai = MetricItem("AI", "--", val_width=44)
         layout_m.addWidget(self.m_ai)
 
-        self.m_sep_tok = self._create_separator()
-        layout_m.addWidget(self.m_sep_tok)
+        self.m_sep_quo = self._create_separator()
+        layout_m.addWidget(self.m_sep_quo)
 
-        self.m_tok = MetricItem("TOK", "--/--", val_width=86)
-        layout_m.addWidget(self.m_tok)
+        self.m_quo = MetricItem("QUO", "--/--", val_width=72)
+        layout_m.addWidget(self.m_quo)
 
         self.stack.addWidget(self.page_m)
 
     def set_mode(self, mode: HUDMode):
         self.hud_mode = mode
+        sf = getattr(self, "scale_factor", 1.0)
         if mode == HUDMode.HORIZONTAL:
             self.stack.setCurrentIndex(0)
-            self.setFixedSize(1060, 36)
+            self.setFixedSize(int(1060 * sf), int(36 * sf))
         elif mode == HUDMode.VERTICAL:
             self.stack.setCurrentIndex(1)
-            self.setFixedSize(185, 310)
+            self.setFixedSize(int(185 * sf), int(310 * sf))
         else:  # MINI
             self.stack.setCurrentIndex(2)
-            self.setFixedSize(600, 32)
+            self.setFixedSize(int(600 * sf), int(32 * sf))
 
-        # 确保形态切换后窗口始终完整位于屏幕可见区域内
-        screen = self.screen()
+        # 确保形态切换后窗口始终完整位于当前屏幕可见区域内 (多屏幕感知)
+        center = self.pos() + QPoint(self.width() // 2, self.height() // 2)
+        screen = QApplication.screenAt(center) or self.screen() or QApplication.primaryScreen()
         if screen:
             geom = screen.availableGeometry()
             new_x = min(self.x(), geom.right() - self.width() - 5)
@@ -338,6 +342,22 @@ class FloatingBar(QWidget):
 
         self.update()
         self.mode_changed_signal.emit(mode)
+
+    def set_scale(self, factor: float):
+        """调整 HUD 缩放比例 (0.8 ~ 1.4)"""
+        self.scale_factor = max(0.7, min(1.6, factor))
+        self.set_mode(self.hud_mode)
+        self.scale_changed_signal.emit(self.scale_factor)
+
+    def reset_to_primary_screen(self):
+        """一键复位至主屏右上角安全停靠位置"""
+        primary = QApplication.primaryScreen()
+        if primary:
+            geom = primary.availableGeometry()
+            x = geom.right() - self.width() - 25
+            y = geom.top() + 35
+            self.move(x, y)
+            self.position_changed_signal.emit(x, y)
 
     def set_click_through(self, enabled: bool):
         self.click_through = enabled
@@ -444,51 +464,72 @@ class FloatingBar(QWidget):
                 f"🤖 Antigravity AI 状态: {data.agent_status}\n"
                 f"💬 活跃会话: {data.active_title}\n"
                 f"📊 上下文用量: {data.context_tokens:,} / {data.context_limit:,} ({data.context_percent:.1f}%)\n"
-                f"⚡ 单轮增量: +{data.last_turn_total:,} (In: {data.last_turn_input} | Out: {data.last_turn_output})\n"
-                f"📈 今日累计: {data.today_tokens:,} Tokens"
+                f"⚡ 单轮增量: +{data.last_turn_total:,} (In: {data.last_turn_input} | Out: {data.last_turn_output})"
             )
 
-        # Token 消耗统计格式化 (今日用量 / 历史累计)
-        if not data.is_running:
-            tok_text = "--/--"
-            tok_color = "#64748b"
-            v_day_text = "--"
-            v_tot_text = "--"
-            tok_tooltip = "Antigravity 未运行"
+        quota_str = ""
+        if data.is_running and data.gemini_5h_percent >= 0:
+            quota_lines = ["\n🌟 官方实时配额:"]
+            if data.user_tier_name:
+                quota_lines.append(f"  • 订阅级别: {data.user_tier_name}")
+            rst_5h = f" ({data.gemini_5h_reset_str})" if data.gemini_5h_reset_str else ""
+            quota_lines.append(f"  • Gemini 5h 限额: {data.gemini_5h_percent:.1f}% 剩余{rst_5h}")
+            rst_wk = f" ({data.gemini_weekly_reset_str})" if data.gemini_weekly_reset_str else ""
+            quota_lines.append(f"  • Gemini 周度限额: {data.gemini_weekly_percent:.1f}% 剩余{rst_wk}")
+            if data.third_party_5h_percent >= 0:
+                quota_lines.append(f"  • 第三方模型: 5h {data.third_party_5h_percent:.0f}% | 周 {data.third_party_weekly_percent:.0f}%")
+            quota_str = "\n".join(quota_lines)
+            tooltip += quota_str
+
+        # 配额数据显示与色彩
+        if not data.is_running or data.gemini_5h_percent < 0:
+            quo_text = "--/--"
+            v_5h_text = "--"
+            v_wk_text = "--"
+            quo_color = "#64748b"
+            v_5h_color = "#64748b"
+            v_wk_color = "#64748b"
+            quo_tip = "官方配额: 未获取或离线"
         else:
-            day_str = format_tokens_compact(data.today_tokens)
-            tot_str = format_tokens_compact(data.total_tokens)
-            tok_text = f"{day_str}/{tot_str}"
-            tok_color = "#a78bfa"
-            v_day_text = day_str
-            v_tot_text = tot_str
+            quo_text = f"{data.gemini_5h_percent:.0f}%/{data.gemini_weekly_percent:.0f}%"
+            v_5h_text = f"{data.gemini_5h_percent:.0f}%"
+            v_wk_text = f"{data.gemini_weekly_percent:.0f}%"
 
-            # 计算折算成本 (按会话实际选用模型动态加权计算)
-            cost_today = data.today_cost_usd
-            cost_tot = data.total_cost_usd
+            # 5h 额度颜色
+            if data.gemini_5h_percent <= 20.0:
+                v_5h_color = "#ef4444"
+                quo_color = "#ef4444"
+            elif data.gemini_5h_percent <= 50.0:
+                v_5h_color = "#f59e0b"
+                quo_color = "#f59e0b"
+            else:
+                v_5h_color = "#10b981"
+                quo_color = "#10b981"
 
-            breakdown_lines = []
-            for m_name, m_info in (data.model_breakdown or {}).items():
-                m_c = m_info.get("cost_usd", 0.0)
-                m_cnt = m_info.get("count", 0)
-                breakdown_lines.append(f"  • {m_name} ({m_cnt}会话): ${m_c:.2f} (¥{m_c*7.2:.2f})")
-            breakdown_str = ("\n" + "\n".join(breakdown_lines)) if breakdown_lines else ""
+            # 周度额度颜色
+            if data.gemini_weekly_percent <= 20.0:
+                v_wk_color = "#ef4444"
+            elif data.gemini_weekly_percent <= 50.0:
+                v_wk_color = "#f59e0b"
+            else:
+                v_wk_color = "#38bdf8"
 
-            tok_tooltip = (
-                f"📊 Antigravity Token 消耗与模型加权费用\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📅 今日消耗: {data.today_tokens:,} Tokens (≈ ${cost_today:.2f} / ¥{cost_today*7.2:.2f})\n"
-                f"🌐 历史总和: {data.total_tokens:,} Tokens (≈ ${cost_tot:.2f} / ¥{cost_tot*7.2:.2f})\n"
-                f"💬 历史会话数: {data.total_conversations} 个\n"
-                f"🏷️ 各模型费用明细:{breakdown_str}\n"
-                f"💡 格式说明: [今日消耗] / [历史总和]"
+            rst_5h = f" ({data.gemini_5h_reset_str})" if data.gemini_5h_reset_str else ""
+            rst_wk = f" ({data.gemini_weekly_reset_str})" if data.gemini_weekly_reset_str else ""
+            quo_tip = (
+                f"🌟 Antigravity 官方云端实时配额\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏳ 5小时滑动限额: {data.gemini_5h_percent:.1f}% 剩余{rst_5h}\n"
+                f"📅 周度总体限额: {data.gemini_weekly_percent:.1f}% 剩余{rst_wk}\n"
+                f"💎 会员订阅等级: {data.user_tier_name or '默认'}\n"
+                f"💡 格式说明: [5小时剩余%] / [周度剩余%]"
             )
 
         # 刷新 HORIZONTAL
         self.h_ai.set_value(ai_text, 0, color)
         self.h_ai.setToolTip(tooltip)
-        self.h_tok.set_value(tok_text, 0, tok_color)
-        self.h_tok.setToolTip(tok_tooltip)
+        self.h_quo.set_value(quo_text, 0, quo_color)
+        self.h_quo.setToolTip(quo_tip)
 
         # 刷新 VERTICAL
         if not data.is_running:
@@ -499,16 +540,16 @@ class FloatingBar(QWidget):
             v_text = f"{data.context_percent:.1f}% ({ai_text})"
         self.v_ai.set_value(v_text, 0, color)
         self.v_ai.setToolTip(tooltip)
-        self.v_tok_today.set_value(v_day_text, 0, "#38bdf8" if data.is_running else "#64748b")
-        self.v_tok_today.setToolTip(tok_tooltip)
-        self.v_tok_total.set_value(v_tot_text, 0, "#a78bfa" if data.is_running else "#64748b")
-        self.v_tok_total.setToolTip(tok_tooltip)
+        self.v_quo_5h.set_value(v_5h_text, 0, v_5h_color)
+        self.v_quo_5h.setToolTip(quo_tip)
+        self.v_quo_wk.set_value(v_wk_text, 0, v_wk_color)
+        self.v_quo_wk.setToolTip(quo_tip)
 
         # 刷新 MINI
         self.m_ai.set_value(ai_text, 0, color)
         self.m_ai.setToolTip(tooltip)
-        self.m_tok.set_value(tok_text, 0, tok_color)
-        self.m_tok.setToolTip(tok_tooltip)
+        self.m_quo.set_value(quo_text, 0, quo_color)
+        self.m_quo.setToolTip(quo_tip)
 
         self.update()
 
@@ -522,17 +563,20 @@ class FloatingBar(QWidget):
     def mouseMoveEvent(self, event):
         if self.is_dragging and event.buttons() == Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_position
-            screen = self.screen().availableGeometry()
-            snap_dist = 15
-            if abs(new_pos.x() - screen.left()) < snap_dist:
-                new_pos.setX(screen.left() + 6)
-            elif abs(new_pos.x() + self.width() - screen.right()) < snap_dist:
-                new_pos.setX(screen.right() - self.width() - 6)
+            center = new_pos + QPoint(self.width() // 2, self.height() // 2)
+            screen = QApplication.screenAt(center) or self.screen() or QApplication.primaryScreen()
+            if screen:
+                geom = screen.availableGeometry()
+                snap_dist = 15
+                if abs(new_pos.x() - geom.left()) < snap_dist:
+                    new_pos.setX(geom.left() + 6)
+                elif abs(new_pos.x() + self.width() - geom.right()) < snap_dist:
+                    new_pos.setX(geom.right() - self.width() - 6)
 
-            if abs(new_pos.y() - screen.top()) < snap_dist:
-                new_pos.setY(screen.top() + 6)
-            elif abs(new_pos.y() + self.height() - screen.bottom()) < snap_dist:
-                new_pos.setY(screen.bottom() - self.height() - 6)
+                if abs(new_pos.y() - geom.top()) < snap_dist:
+                    new_pos.setY(geom.top() + 6)
+                elif abs(new_pos.y() + self.height() - geom.bottom()) < snap_dist:
+                    new_pos.setY(geom.bottom() - self.height() - 6)
 
             self.move(new_pos)
             event.accept()
@@ -591,6 +635,14 @@ class FloatingBar(QWidget):
             act.setChecked(self.hud_mode == m)
             act.triggered.connect(lambda checked, mode=m: self.set_mode(mode))
 
+        # HUD 缩放比例
+        scale_menu = menu.addMenu("🔍 HUD 缩放比例")
+        for sc, sc_lbl in [(0.8, "80% (紧凑)"), (1.0, "100% (默认)"), (1.2, "120% (放大)"), (1.4, "140% (超大)")]:
+            act = scale_menu.addAction(sc_lbl)
+            act.setCheckable(True)
+            act.setChecked(abs(self.scale_factor - sc) < 0.05)
+            act.triggered.connect(lambda checked, s=sc: self.set_scale(s))
+
         # 鼠标穿透开关 (适合游戏无干扰)
         act_click_thru = menu.addAction("🖱️ 鼠标穿透模式 (Ctrl+Shift+P)")
         act_click_thru.setCheckable(True)
@@ -608,6 +660,10 @@ class FloatingBar(QWidget):
         action_lock.setCheckable(True)
         action_lock.setChecked(self.locked_position)
         action_lock.triggered.connect(self._toggle_lock)
+
+        # 重置位置
+        act_reset = menu.addAction("📍 重置位置至主屏右上角")
+        act_reset.triggered.connect(self.reset_to_primary_screen)
 
         # 透明度
         opacity_menu = menu.addMenu("🌓 透明度")
